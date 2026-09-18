@@ -1,0 +1,80 @@
+{
+  "name": "WithdrawalRequest",
+  "type": "object",
+  "properties": {
+    "warehouse": {
+      "type": "string",
+      "enum": [
+        "\u05de\u05db\u05d5\u05dc\u05d4",
+        "\u05de\u05d7\u05e1\u05df \u05e7\u05e8\u05d1\u05d9\u05e5",
+        "\u05de\u05d7\u05e1\u05df \u05dc\u05d5\u05d2\u05d9\u05e1\u05d8\u05d9"
+      ],
+      "title": "\u05de\u05d7\u05e1\u05df"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "returnable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "title": "\u05e4\u05e8\u05d9\u05d8\u05d9\u05dd"
+    },
+    "requested_by_name": {
+      "type": "string",
+      "title": "\u05de\u05d1\u05e7\u05e9"
+    },
+    "pluga": {
+      "type": "string",
+      "enum": [
+        "\u05e4\u05d0\u05e8\u05df",
+        "\u05d1\u05e9\u05d5\u05e8",
+        "\u05e6\u05d9\u05df",
+        "\u05e8\u05de\u05d5\u05df",
+        "\u05ea\u05de\u05e8"
+      ],
+      "title": "\u05e4\u05dc\u05d5\u05d2\u05d4"
+    },
+    "request_date": {
+      "type": "string",
+      "title": "\u05ea\u05d0\u05e8\u05d9\u05da \u05d1\u05e7\u05e9\u05d4"
+    },
+    "expected_return_date": {
+      "type": "string",
+      "title": "\u05ea\u05d0\u05e8\u05d9\u05da \u05d4\u05d7\u05d6\u05e8\u05d4 \u05e6\u05e4\u05d5\u05d9"
+    },
+    "notes": {
+      "type": "string",
+      "title": "\u05d4\u05e2\u05e8\u05d5\u05ea"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ],
+      "default": "pending",
+      "title": "\u05e1\u05d8\u05d8\u05d5\u05e1"
+    },
+    "approved_by_name": {
+      "type": "string",
+      "title": "\u05de\u05d0\u05e9\u05e8"
+    }
+  },
+  "required": [
+    "warehouse",
+    "items",
+    "pluga",
+    "request_date"
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "name": "GapUpdate",
+  "type": "object",
+  "properties": {
+    "gap_id": {
+      "type": "string",
+      "title": "\u05de\u05d6\u05d4\u05d4 \u05e4\u05e2\u05e8",
+      "description": "\u05d4\u05e4\u05e2\u05e8 \u05e9\u05d4\u05e2\u05d3\u05db\u05d5\u05df \u05e9\u05d9\u05d9\u05da \u05d0\u05dc\u05d9\u05d5"
+    },
+    "update_type": {
+      "type": "string",
+      "enum": [
+        "\u05e9\u05d9\u05e0\u05d5\u05d9 \u05e1\u05d8\u05d8\u05d5\u05e1",
+        "\u05e9\u05d9\u05e0\u05d5\u05d9 \u05e2\u05d3\u05d9\u05e4\u05d5\u05ea",
+        "\u05e2\u05d3\u05db\u05d5\u05df \u05db\u05dc\u05dc\u05d9",
+        "\u05ea\u05d2\u05d5\u05d1\u05d4"
+      ],
+      "default": "\u05ea\u05d2\u05d5\u05d1\u05d4",
+      "title": "\u05e1\u05d5\u05d2 \u05e2\u05d3\u05db\u05d5\u05df"
+    },
+    "field": {
+      "type": "string",
+      "title": "\u05e9\u05d3\u05d4 \u05e9\u05d4\u05e9\u05ea\u05e0\u05d4",
+      "description": "\u05d0\u05d9\u05d6\u05d4 \u05e9\u05d3\u05d4 \u05d4\u05e9\u05ea\u05e0\u05d4 (\u05dc\u05e9\u05d9\u05e0\u05d5\u05d9\u05d9 \u05e1\u05d8\u05d8\u05d5\u05e1/\u05e2\u05d3\u05d9\u05e4\u05d5\u05ea)"
+    },
+    "old_value": {
+      "type": "string",
+      "title": "\u05e2\u05e8\u05da \u05d9\u05e9\u05df"
+    },
+    "new_value": {
+      "type": "string",
+      "title": "\u05e2\u05e8\u05da \u05d7\u05d3\u05e9"
+    },
+    "text": {
+      "type": "string",
+      "title": "\u05ea\u05d5\u05db\u05df \u05e2\u05d3\u05db\u05d5\u05df",
+      "description": "\u05de\u05dc\u05dc \u05d7\u05d5\u05e4\u05e9\u05d9 \u05dc\u05ea\u05d2\u05d5\u05d1\u05d5\u05ea \u05d5\u05e2\u05d3\u05db\u05d5\u05e0\u05d9\u05dd"
+    },
+    "author_name": {
+      "type": "string",
+      "title": "\u05e4\u05d5\u05e8\u05e1\u05dd \u05e2\u05dc \u05d9\u05d3\u05d9"
+    }
+  },
+  "required": [
+    "gap_id",
+    "update_type"
+  ]
+}

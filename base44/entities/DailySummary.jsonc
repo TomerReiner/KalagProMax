@@ -1,0 +1,28 @@
+{
+  "name": "DailySummary",
+  "type": "object",
+  "properties": {
+    "summary_date": {
+      "type": "string",
+      "title": "\u05ea\u05d0\u05e8\u05d9\u05da"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "area": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      },
+      "title": "\u05e4\u05e8\u05d8\u05d9 \u05d4\u05e1\u05d9\u05db\u05d5\u05dd"
+    }
+  },
+  "required": [
+    "summary_date"
+  ]
+}

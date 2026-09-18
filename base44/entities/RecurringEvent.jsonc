@@ -1,0 +1,53 @@
+{
+  "name": "RecurringEvent",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "title": "\u05db\u05d5\u05ea\u05e8\u05ea"
+    },
+    "start_time": {
+      "type": "string",
+      "title": "\u05e9\u05e2\u05ea \u05d4\u05ea\u05d7\u05dc\u05d4"
+    },
+    "end_time": {
+      "type": "string",
+      "title": "\u05e9\u05e2\u05ea \u05e1\u05d9\u05d5\u05dd"
+    },
+    "recurrence": {
+      "type": "string",
+      "enum": [
+        "daily",
+        "sunday",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday"
+      ],
+      "title": "\u05d7\u05d6\u05e8\u05ea\u05d9\u05d5\u05ea"
+    },
+    "pluga": {
+      "type": "string",
+      "enum": [
+        "\u05e4\u05d0\u05e8\u05df",
+        "\u05d1\u05e9\u05d5\u05e8",
+        "\u05e6\u05d9\u05df",
+        "\u05e8\u05de\u05d5\u05df",
+        "\u05ea\u05de\u05e8"
+      ],
+      "title": "\u05e4\u05dc\u05d5\u05d2\u05d4"
+    },
+    "details": {
+      "type": "string",
+      "title": "\u05e4\u05d9\u05e8\u05d5\u05d8"
+    }
+  },
+  "required": [
+    "title",
+    "start_time",
+    "end_time",
+    "recurrence"
+  ]
+}

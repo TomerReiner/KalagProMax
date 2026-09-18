@@ -1,0 +1,22 @@
+{
+  "name": "EquipmentSettings",
+  "type": "object",
+  "properties": {
+    "responsible_klaf_id": {
+      "type": "string",
+      "title": "\u05de\u05d6\u05d4\u05d4 \u05e7\u05dc\u05e3 \u05d0\u05d7\u05e8\u05d0\u05d9"
+    },
+    "responsible_klaf_name": {
+      "type": "string",
+      "title": "\u05e9\u05dd \u05e7\u05dc\u05e3 \u05d0\u05d7\u05e8\u05d0\u05d9"
+    },
+    "notification_emails": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "title": "\u05d0\u05d9\u05de\u05d9\u05d9\u05dc\u05d9\u05dd \u05dc\u05d4\u05ea\u05e8\u05d0\u05d5\u05ea"
+    }
+  },
+  "required": []
+}
