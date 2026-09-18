@@ -23,6 +23,10 @@ import Klaf from '@/pages/Klaf';
 import Statistics from '@/pages/Statistics';
 import Equipment from '@/pages/Equipment';
 // Add page imports here
+// Note: the Base44 MCP OAuth-consent page (src/pages/OAuthConsent.jsx) was
+// dropped here — it authorized AI clients against Base44's own hosted MCP
+// server, which no longer exists once the app runs on Supabase/Vercel. The
+// file is left on disk but is no longer imported or routed.
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
