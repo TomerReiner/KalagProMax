@@ -9,8 +9,8 @@ import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
 import { safeReturnTo } from "@/lib/authReturnTo";
 
-const LOGO_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/98fcd8299_image.png";
-const HEADER_IMAGE_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/a3148ebb9_image.png";
+const LOGO_URL = "/images/emblem.webp";
+const HEADER_IMAGE_URL = "/images/header-title.webp";
 
 export default function Login() {
   const [accessOpen, setAccessOpen] = useState(false);

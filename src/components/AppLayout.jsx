@@ -6,10 +6,9 @@ import AdminPanel from "./AdminPanel";
 import NotificationsBell from "./NotificationsBell";
 import { usePreviewRole } from "@/lib/previewRoleContext";
 
-const LOGO_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/98fcd8299_image.png";
-const CHARACTER_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/89a22bb0d_image.png";
-const WATERMARK_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/97bf84ed7_image.png";
-const HEADER_IMAGE_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/a3148ebb9_image.png";
+const LOGO_URL = "/images/emblem.webp";
+const WATERMARK_URL = "/images/watermark.webp";
+const HEADER_IMAGE_URL = "/images/header-title.webp";
 
 const ROLE_PAGES = {
   admin: ["/", "/daily-summary", "/shotaf", "/constraints", "/tasks", "/statistics", "/equipment"],
@@ -60,7 +59,7 @@ export default function AppLayout() {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <NotificationsBell />
-                <img src="https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/dc1eb7964_image.png" alt="" className="h-10 w-10 object-contain" />
+                <img src="/images/header-icon.webp" alt="" className="h-10 w-10 object-contain" />
                 <AdminPanel />
               </div>
             </div>
