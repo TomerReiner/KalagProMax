@@ -110,6 +110,8 @@ const entities = {
   EquipmentHolding: makeEntity('equipment_holdings'),
   EquipmentSettings: makeEntity('equipment_settings'),
   Event: makeEntity('events'),
+  EventContact: makeEntity('event_contacts'),
+  EventConfirmation: makeEntity('event_confirmations'),
   Gap: makeEntity('gaps'),
   GapUpdate: makeEntity('gap_updates'),
   RecurringEvent: makeEntity('recurring_events'),

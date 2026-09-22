@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { PLUGOT, PLUGA_COLORS, toDateStr } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +15,7 @@ export default function StandaloneTaskForm({ open, onClose, onSubmit, defaultDat
     responsible_plugas: [],
     task_date: defaultDate || toDateStr(new Date()),
   });
+  const [isGeneral, setIsGeneral] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -24,6 +26,7 @@ export default function StandaloneTaskForm({ open, onClose, onSubmit, defaultDat
         responsible_plugas: [],
         task_date: defaultDate || toDateStr(new Date()),
       });
+      setIsGeneral(false);
     }
   }, [open, defaultDate]);
 
@@ -38,10 +41,10 @@ export default function StandaloneTaskForm({ open, onClose, onSubmit, defaultDat
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.title || !form.task_date) return;
+    if (!form.title || (!isGeneral && !form.task_date)) return;
     setSaving(true);
     try {
-      const payload = { ...form, status: "פתוחה" };
+      const payload = { ...form, status: "פתוחה", task_date: isGeneral ? null : form.task_date };
       if (!payload.notes) delete payload.notes;
       if (!payload.responsible_plugas?.length) delete payload.responsible_plugas;
       await onSubmit(payload);
@@ -67,15 +70,26 @@ export default function StandaloneTaskForm({ open, onClose, onSubmit, defaultDat
               required
             />
           </div>
-          <div className="space-y-2">
-            <Label>תאריך *</Label>
-            <Input
-              type="date"
-              value={form.task_date}
-              onChange={(e) => setForm({ ...form, task_date: e.target.value })}
-              required
-            />
+          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+            <div>
+              <Label className="cursor-pointer" onClick={() => setIsGeneral(!isGeneral)}>משימה כללית (ללא תאריך)</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                תישמר ברשימת "משימות לשיבוץ" ותוכל לשבץ אותה לתאריך מאוחר יותר
+              </p>
+            </div>
+            <Switch checked={isGeneral} onCheckedChange={setIsGeneral} />
           </div>
+          {!isGeneral && (
+            <div className="space-y-2">
+              <Label>תאריך *</Label>
+              <Input
+                type="date"
+                value={form.task_date}
+                onChange={(e) => setForm({ ...form, task_date: e.target.value })}
+                required
+              />
+            </div>
+          )}
           <div className="space-y-2">
             <Label>פלוגות אחריות (אופציונלי)</Label>
             <div className="flex flex-wrap gap-2">

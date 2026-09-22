@@ -51,7 +51,7 @@ export default function AppLayout() {
         style={{ backgroundImage: `url(${WATERMARK_URL})` }} />
       
       <div className="relative z-10">
-        <div className="shadow-sm">
+        <div className="sticky top-0 z-20 shadow-sm bg-black">
           <header className="bg-black text-white border-b border-slate-800">
             <div className="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between gap-3">
               <img src={LOGO_URL} alt="סמל" className="w-9 h-9 rounded-full object-cover shrink-0" />

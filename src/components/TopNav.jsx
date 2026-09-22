@@ -4,6 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { HardHat, CalendarDays, CalendarRange, ClipboardList, ClipboardCheck, CheckSquare, BarChart3, Package } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePreviewRole } from "@/lib/previewRoleContext";
+import { useOpenTasksToday } from "@/lib/useOpenTasksToday";
 
 const ALL_NAV_ITEMS = [
   { to: "/", label: "פערים", icon: HardHat, roles: ["admin", "קלפ", "רסר", "סגל"] },
@@ -25,13 +26,15 @@ const ROLE_ORDER = {
 
 export default function TopNav() {
   const [user, setUser] = useState(null);
-  const { previewRole } = usePreviewRole();
+  const { previewRole, previewPluga } = usePreviewRole();
 
   useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
   }, []);
 
   const effectiveRole = previewRole || user?.role;
+  const targetPluga = previewRole === "קלפ" ? previewPluga : user?.pluga;
+  const { openCount } = useOpenTasksToday(effectiveRole === "קלפ" ? targetPluga : null);
   const order = ROLE_ORDER[effectiveRole] || [];
   const items = ALL_NAV_ITEMS
     .filter((item) => !user || item.roles.includes(effectiveRole))
@@ -47,7 +50,7 @@ export default function TopNav() {
             end={to === "/"}
             className={({ isActive }) =>
               cn(
-                "flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2",
+                "relative flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2",
                 isActive
                   ? "border-white text-white"
                   : "border-transparent text-slate-300 hover:text-white hover:border-slate-600"
@@ -56,6 +59,14 @@ export default function TopNav() {
           >
             <Icon className="w-4 h-4" />
             {label}
+            {to === "/klaf" && openCount > 0 && (
+              <span
+                className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center"
+                title={`יש לך ${openCount} משימות פתוחות היום`}
+              >
+                {openCount > 99 ? "99+" : openCount}
+              </span>
+            )}
           </NavLink>
         ))}
       </div>

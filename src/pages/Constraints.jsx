@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, ChevronRight, ChevronLeft, CalendarRange, Repeat } from "lucide-react";
+import { Loader2, Plus, ChevronRight, ChevronLeft, CalendarRange, Repeat, ClipboardCheck } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,7 @@ import { PLUGOT, PLUGA_COLORS, EVENT_COLORS, toDateStr, formatHebrewDate, getSho
 import TimeInput from "@/components/TimeInput";
 import EventForm from "@/components/constraints/EventForm";
 import RecurringManageDialog from "@/components/constraints/RecurringManageDialog";
+import EventConfirmationsOverview from "@/components/constraints/EventConfirmationsOverview";
 import { cn } from "@/lib/utils";
 import { computeLayout } from "@/lib/calendarLayout";
 
@@ -56,6 +57,7 @@ export default function Constraints() {
   const [routines, setRoutines] = useState([]);
   const [recurringOverrides, setRecurringOverrides] = useState([]);
   const [recurringManageOpen, setRecurringManageOpen] = useState(false);
+  const [confirmationsOverviewOpen, setConfirmationsOverviewOpen] = useState(false);
   const [viewRecurring, setViewRecurring] = useState(null);
   const [moveDate, setMoveDate] = useState("");
   const [viewShotafTask, setViewShotafTask] = useState(null);
@@ -319,6 +321,10 @@ export default function Constraints() {
           <Button onClick={() => setRecurringManageOpen(true)} variant="outline" className="gap-2">
             <Repeat className="w-4 h-4" />
             אירועים קבועים
+          </Button>
+          <Button onClick={() => setConfirmationsOverviewOpen(true)} variant="outline" className="gap-2">
+            <ClipboardCheck className="w-4 h-4" />
+            מעקב אישורי הגעה
           </Button>
         </div>
       </div>
@@ -924,6 +930,12 @@ export default function Constraints() {
         onClose={() => setEventFormOpen(false)}
         onSubmit={handleEventSubmit}
         editing={eventEditing}
+      />
+
+      <EventConfirmationsOverview
+        open={confirmationsOverviewOpen}
+        onClose={() => setConfirmationsOverviewOpen(false)}
+        events={events}
       />
     </div>
   );

@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2, Phone, Trash2, UserPlus, BellRing } from "lucide-react";
 import TimeInput from "@/components/TimeInput";
-import { PLUGOT, toDateStr } from "@/lib/constants";
+import { PLUGOT, PLUGA_COLORS, toDateStr } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { base44 } from "@/api/base44Client";
+import { DEFAULT_REMINDER_OFFSET_MINUTES } from "@/lib/eventConfirmations";
 
 const emptyForm = {
   event_type: "חיצוני",
@@ -27,6 +30,15 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
 
+  // Contacts (e.g. bus drivers) + per-pluga confirmation tracking. Both need
+  // a real event id, so this section only appears once the event has been
+  // saved at least once (editing !== null).
+  const [contacts, setContacts] = useState([]);
+  const [confirmations, setConfirmations] = useState([]);
+  const [loadingExtras, setLoadingExtras] = useState(false);
+  const [contactForm, setContactForm] = useState({ name: "", phone: "", role_label: "" });
+  const [savingContact, setSavingContact] = useState(false);
+
   useEffect(() => {
     if (open) {
       if (editing) {
@@ -34,12 +46,37 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
           ...emptyForm,
           ...editing,
           responsible_plugas: editing.responsible_plugas || [],
+          reminder_offset_minutes: editing.reminder_offset_minutes ?? DEFAULT_REMINDER_OFFSET_MINUTES,
         });
       } else {
         setForm({ ...emptyForm, event_date: toDateStr(new Date()) });
       }
+      setContactForm({ name: "", phone: "", role_label: "" });
     }
   }, [open, editing]);
+
+  const loadExtras = useCallback(async () => {
+    if (!editing?.id) return;
+    setLoadingExtras(true);
+    try {
+      const [contactData, confirmationData] = await Promise.all([
+        base44.entities.EventContact.filter({ event_id: editing.id }),
+        base44.entities.EventConfirmation.filter({ event_id: editing.id }),
+      ]);
+      setContacts(contactData);
+      setConfirmations(confirmationData);
+    } finally {
+      setLoadingExtras(false);
+    }
+  }, [editing?.id]);
+
+  useEffect(() => {
+    if (open && editing?.id) loadExtras();
+    if (!open || !editing) {
+      setContacts([]);
+      setConfirmations([]);
+    }
+  }, [open, editing, loadExtras]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -51,6 +88,50 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleAddContact = async () => {
+    if (!contactForm.name.trim() || !contactForm.phone.trim() || !editing?.id) return;
+    setSavingContact(true);
+    try {
+      await base44.entities.EventContact.create({
+        event_id: editing.id,
+        name: contactForm.name.trim(),
+        phone: contactForm.phone.trim(),
+        role_label: contactForm.role_label.trim() || null,
+      });
+      setContactForm({ name: "", phone: "", role_label: "" });
+      await loadExtras();
+    } finally {
+      setSavingContact(false);
+    }
+  };
+
+  const handleDeleteContact = async (id) => {
+    await base44.entities.EventContact.delete(id);
+    await loadExtras();
+  };
+
+  const togglePlugaConfirmation = async (pluga) => {
+    if (!editing?.id) return;
+    const existing = confirmations.find((c) => c.pluga === pluga);
+    if (existing) {
+      await base44.entities.EventConfirmation.delete(existing.id);
+    } else {
+      await base44.entities.EventConfirmation.create({ event_id: editing.id, pluga });
+    }
+    await loadExtras();
+  };
+
+  const setAllPlugotConfirmation = async (enable) => {
+    if (!editing?.id) return;
+    if (enable) {
+      const missing = PLUGOT.filter((p) => !confirmations.some((c) => c.pluga === p));
+      await Promise.all(missing.map((p) => base44.entities.EventConfirmation.create({ event_id: editing.id, pluga: p })));
+    } else {
+      await Promise.all(confirmations.map((c) => base44.entities.EventConfirmation.delete(c.id)));
+    }
+    await loadExtras();
   };
 
   const togglePluga = (p) => {
@@ -227,6 +308,134 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
                 ))}
               </div>
             </div>
+          )}
+
+          {editing?.id ? (
+            <div className="border-t pt-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <BellRing className="w-4 h-4 text-slate-700" />
+                <p className="text-sm font-semibold text-slate-700">אנשי קשר ואישורי הגעה</p>
+                {loadingExtras && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+              </div>
+
+              <div className="space-y-2">
+                <Label>שעות לפני האירוע לשליחת תזכורת</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.reminder_offset_minutes ? Math.round(form.reminder_offset_minutes / 60 * 10) / 10 : ""}
+                  onChange={(e) => setForm({ ...form, reminder_offset_minutes: e.target.value ? Math.round(Number(e.target.value) * 60) : null })}
+                  placeholder="1.5"
+                />
+                <p className="text-xs text-muted-foreground">
+                  לדוגמה 1.5 שעות = תזכורת לאישור תישלח שעה וחצי לפני מועד האירוע. יש לשמור את הטופס כדי לעדכן.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>פלוגות שצריכות לאשר</Label>
+                  <div className="flex gap-1">
+                    <button type="button" onClick={() => setAllPlugotConfirmation(true)} className="text-xs text-blue-600 hover:underline">
+                      בחר הכל
+                    </button>
+                    <span className="text-xs text-muted-foreground">/</span>
+                    <button type="button" onClick={() => setAllPlugotConfirmation(false)} className="text-xs text-slate-500 hover:underline">
+                      נקה הכל
+                    </button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {PLUGOT.map((p) => {
+                    const selected = confirmations.some((c) => c.pluga === p);
+                    const confirmedByPluga = confirmations.find((c) => c.pluga === p)?.confirmed;
+                    const color = PLUGA_COLORS[p];
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => togglePlugaConfirmation(p)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-full text-sm font-medium border transition-colors flex items-center gap-1.5",
+                          selected
+                            ? cn(color?.light, color?.border)
+                            : "bg-white border-border text-muted-foreground hover:bg-slate-50"
+                        )}
+                      >
+                        {p}
+                        {selected && (confirmedByPluga ? " ✓" : "")}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  כל פלוגה שנבחרה תראה תזכורת ותוכל לאשר בעמוד "המשימות שלי" שלה.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>אנשי קשר (למשל נהג הסעה)</Label>
+                {contacts.length > 0 && (
+                  <div className="space-y-1.5">
+                    {contacts.map((c) => (
+                      <div key={c.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 bg-white">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {c.name}
+                            {c.role_label && <span className="text-xs text-muted-foreground"> · {c.role_label}</span>}
+                          </p>
+                          <a href={`tel:${c.phone}`} className="text-xs text-blue-600 flex items-center gap-1">
+                            <Phone className="w-3 h-3" />
+                            {c.phone}
+                          </a>
+                        </div>
+                        <button type="button" onClick={() => handleDeleteContact(c.id)} className="shrink-0 p-1.5 rounded-lg hover:bg-red-50 text-red-500">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2 items-end">
+                  <div className="space-y-1 flex-1 min-w-[100px]">
+                    <Input
+                      value={contactForm.name}
+                      onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                      placeholder="שם"
+                    />
+                  </div>
+                  <div className="space-y-1 flex-1 min-w-[100px]">
+                    <Input
+                      value={contactForm.phone}
+                      onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
+                      placeholder="טלפון"
+                    />
+                  </div>
+                  <div className="space-y-1 flex-1 min-w-[100px]">
+                    <Input
+                      value={contactForm.role_label}
+                      onChange={(e) => setContactForm({ ...contactForm, role_label: e.target.value })}
+                      placeholder="תפקיד (אופציונלי)"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleAddContact}
+                    disabled={savingContact || !contactForm.name.trim() || !contactForm.phone.trim()}
+                    className="gap-1"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    הוסף
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground border-t pt-3">
+              ניתן להוסיף אנשי קשר ואישורי הגעה לאחר שמירת האירוע (פתח לעריכה שוב).
+            </p>
           )}
 
           <DialogFooter>

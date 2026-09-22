@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 
-export default function KlafConstraints({ pluga, dateStr }) {
+export default function KlafConstraints({ pluga, dateStr, onChange }) {
   const [constraints, setConstraints] = useState([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -46,6 +46,7 @@ export default function KlafConstraints({ pluga, dateStr }) {
       setForm({ title: "", start_time: "", end_time: "", details: "" });
       setFormOpen(false);
       await loadConstraints();
+      onChange?.();
       toast({ title: "אילוץ נוסף", duration: 2000 });
     } finally {
       setSaving(false);

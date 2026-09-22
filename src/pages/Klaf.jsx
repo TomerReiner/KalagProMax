@@ -2,13 +2,14 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Loader2, ChevronRight, ChevronLeft, CheckCircle2, Circle, ExternalLink, Sun, Sunset, Moon, Users, Truck, UtensilsCrossed, Plus, ClipboardList } from "lucide-react";
+import { Loader2, ChevronRight, ChevronLeft, CheckCircle2, Circle, ExternalLink, Sun, Sunset, Moon, Users, Truck, UtensilsCrossed, Plus, ClipboardList, BellRing } from "lucide-react";
 import { PLUGA_COLORS, PLUGOT, formatHebrewDate, toDateStr } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import DirectTaskForm from "@/components/klaf/DirectTaskForm";
 import KlafSchedule from "@/components/klaf/KlafSchedule";
 import KlafConstraints from "@/components/klaf/KlafConstraints";
 import KlafSummary from "@/components/klaf/KlafSummary";
+import KlafEventConfirmations from "@/components/klaf/KlafEventConfirmations";
 import { usePreviewRole } from "@/lib/previewRoleContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -22,6 +23,9 @@ export default function Klaf() {
   const [events, setEvents] = useState([]);
   const [completions, setCompletions] = useState([]);
   const [directTasks, setDirectTasks] = useState([]);
+  const [constraints, setConstraints] = useState([]);
+  const [eventConfirmations, setEventConfirmations] = useState([]);
+  const [eventContacts, setEventContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -35,11 +39,14 @@ export default function Klaf() {
     if (!effectivePluga) return;
     setLoading(true);
     try {
-      const [routineData, eventData, completionData, allDirectTaskData] = await Promise.all([
+      const [routineData, eventData, completionData, allDirectTaskData, constraintData, myConfirmations, allContacts] = await Promise.all([
         base44.entities.DailyRoutine.filter({ routine_date: dateStr }),
         base44.entities.Event.filter({ event_date: dateStr }),
         base44.entities.TaskCompletion.filter({ task_date: dateStr }),
         base44.entities.DirectTask.filter({ task_date: dateStr }),
+        base44.entities.Constraint.filter({ pluga: effectivePluga, constraint_date: dateStr }),
+        base44.entities.EventConfirmation.filter({ pluga: effectivePluga }),
+        base44.entities.EventContact.list("-created_date", 500),
       ]);
       setRoutine(routineData[0] || null);
       setEvents(eventData);
@@ -48,6 +55,13 @@ export default function Klaf() {
         dt.pluga === effectivePluga ||
         (dt.responsible_plugas && dt.responsible_plugas.includes(effectivePluga))
       ));
+      setConstraints(constraintData);
+      // Only today's events matter here; the confirmation feature is scoped
+      // to the selected day like the rest of this page.
+      const todaysEventIds = new Set(eventData.map((e) => e.id));
+      const todaysConfirmations = myConfirmations.filter((c) => todaysEventIds.has(c.event_id));
+      setEventConfirmations(todaysConfirmations);
+      setEventContacts(allContacts.filter((c) => todaysEventIds.has(c.event_id)));
     } finally {
       setLoading(false);
     }
@@ -107,6 +121,9 @@ export default function Klaf() {
     );
   }
   const plugaColor = PLUGA_COLORS[pluga];
+  // Only a real admin (using the preview mechanism to view a klaf's screen) should see
+  // tasks that haven't been assigned to any pluga yet. A genuine קלפ user never sees them.
+  const isAdminPreview = user.role === "admin";
 
   // Build tasks (list)
   const tasks = [];
@@ -172,11 +189,36 @@ export default function Klaf() {
       scheduleItems.push({ title: dt.title, start_time: dt.start_time, end_time: dt.end_time, type: "direct" });
     }
   });
+  // Constraints go on the same timeline as tasks (request: connect the day's
+  // schedule to that day's constraints instead of showing them separately).
+  constraints.forEach((c) => {
+    scheduleItems.push({ title: c.title, start_time: c.start_time, end_time: c.end_time, type: "constraint", details: c.details });
+  });
   scheduleItems.sort((a, b) => (a.start_time || "").localeCompare(b.start_time || ""));
 
   const isCompleted = (task) => {
     return completions.some((c) => c.task_id === task.id && c.task_field === task.field);
   };
+
+  // Tasks not yet assigned to any pluga are admin-preview-only; a klaf viewing their own
+  // screen should never see them.
+  const visibleTasks = isAdminPreview ? tasks : tasks.filter((t) => !t.unassigned);
+
+  const getTaskTime = (task) => task.event?.start_time || task.directTask?.start_time || null;
+
+  // Nicer, sorted layout: open tasks before completed ones, timed tasks in chronological
+  // order, and untimed (shotaf-style) tasks grouped at the end of each group.
+  const sortedTasks = [...visibleTasks].sort((a, b) => {
+    const aDone = isCompleted(a);
+    const bDone = isCompleted(b);
+    if (aDone !== bDone) return aDone ? 1 : -1;
+    const aTime = getTaskTime(a);
+    const bTime = getTaskTime(b);
+    if (aTime && bTime) return aTime.localeCompare(bTime);
+    if (aTime) return -1;
+    if (bTime) return 1;
+    return 0;
+  });
 
   const toggleCompletion = async (task) => {
     const key = `${task.id}_${task.field}`;
@@ -214,7 +256,7 @@ export default function Klaf() {
     }
   };
 
-  const completedCount = tasks.filter(isCompleted).length;
+  const completedCount = visibleTasks.filter(isCompleted).length;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
@@ -251,9 +293,9 @@ export default function Klaf() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          {!loading && tasks.length > 0 && (
+          {!loading && visibleTasks.length > 0 && (
             <p className="text-sm text-muted-foreground">
-              {completedCount}/{tasks.length} הושלמו
+              {completedCount}/{visibleTasks.length} הושלמו
             </p>
           )}
           <Button size="sm" onClick={() => setFormOpen(true)} className="gap-1">
@@ -262,6 +304,24 @@ export default function Klaf() {
           </Button>
         </div>
       </div>
+
+      {!loading && visibleTasks.length > 0 && (
+        <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
+          <div
+            className={cn("h-full rounded-full transition-all", plugaColor.bg)}
+            style={{ width: `${Math.round((completedCount / visibleTasks.length) * 100)}%` }}
+          />
+        </div>
+      )}
+
+      {!loading && visibleTasks.length - completedCount > 0 && (
+        <div className="rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-2.5 flex items-center gap-2 text-amber-800">
+          <BellRing className="w-4 h-4 shrink-0" />
+          <p className="text-sm font-medium">
+            יש לך {visibleTasks.length - completedCount} משימות פתוחות היום
+          </p>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-20">
@@ -273,12 +333,12 @@ export default function Klaf() {
           {/* Task List - right side in RTL */}
           <div className="lg:w-1/2 space-y-2">
             <h2 className="text-sm font-semibold text-muted-foreground mb-2">רשימת משימות</h2>
-            {tasks.length === 0 ? (
+            {visibleTasks.length === 0 ? (
               <div className="text-center py-10 text-muted-foreground border border-border rounded-xl bg-white">
                 <p className="text-sm font-medium">אין משימות להיום</p>
               </div>
             ) : (
-              tasks.map((task, i) => {
+              sortedTasks.map((task, i) => {
                 const completed = isCompleted(task);
                 const key = `${task.id}_${task.field}`;
                 const Icon = task.icon;
@@ -343,13 +403,29 @@ export default function Klaf() {
 
           {/* Schedule - left side in RTL */}
           <div className="lg:w-1/2">
-            <h2 className="text-sm font-semibold text-muted-foreground mb-2">לוז יומי</h2>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-sm font-semibold text-muted-foreground">לוז יומי</h2>
+              {constraints.length > 0 && (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="inline-block w-2.5 h-2.5 rounded-sm bg-red-100 border-2 border-dashed border-red-400" />
+                  אילוץ
+                </span>
+              )}
+            </div>
             <KlafSchedule items={scheduleItems} pluga={pluga} />
           </div>
         </div>
 
+        <KlafEventConfirmations
+          events={events}
+          pluga={pluga}
+          confirmations={eventConfirmations}
+          contacts={eventContacts}
+          onChange={loadData}
+        />
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-2">
-          <KlafConstraints pluga={pluga} dateStr={dateStr} />
+          <KlafConstraints pluga={pluga} dateStr={dateStr} onChange={loadData} />
           <KlafSummary dateStr={dateStr} />
         </div>
         </>
