@@ -4,11 +4,13 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { UserCog, Check, X, Loader2, Mail, Users } from "lucide-react";
+import { UserCog, Check, X, Loader2, Mail, Users, FlaskConical, RotateCcw, LogOut } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { PLUGOT } from "@/lib/constants";
 import { usePreviewRole } from "@/lib/previewRoleContext";
 import { cn } from "@/lib/utils";
+import { isTestMode, disableTestMode } from "@/lib/testMode";
+import { resetTestData } from "@/testdata/mockStore";
 
 const ROLES = ["קלפ", "רסר", "סגל", "admin"];
 
@@ -205,6 +207,34 @@ export default function AdminPanel() {
 
         {tab === "preview" && (
           <div className="mt-4 space-y-4">
+            {isTestMode() && (
+              <div className="rounded-lg border border-dashed border-amber-400 bg-amber-50 p-3 space-y-2">
+                <div className="flex items-center gap-1.5 text-amber-800 text-sm font-medium">
+                  <FlaskConical className="w-4 h-4" />
+                  מצב בדיקה פעיל — נתונים מקומיים בלבד, לא נשמר ב-Supabase
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 gap-1.5"
+                    onClick={() => { resetTestData(); toast({ title: "נתוני הבדיקה אופסו", duration: 2000 }); }}
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    אפס נתוני בדיקה
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 gap-1.5"
+                    onClick={() => { disableTestMode(); window.location.href = "/login"; }}
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    יציאה ממצב בדיקה
+                  </Button>
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <span className="text-xs text-muted-foreground">תצוגת תפקיד</span>
               <Select value={previewRole || "admin"} onValueChange={(v) => setPreviewRole(v === "admin" ? null : v)}>

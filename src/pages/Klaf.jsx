@@ -44,7 +44,13 @@ export default function Klaf() {
         base44.entities.Event.filter({ event_date: dateStr }),
         base44.entities.TaskCompletion.filter({ task_date: dateStr }),
         base44.entities.DirectTask.filter({ task_date: dateStr }),
-        base44.entities.Constraint.filter({ pluga: effectivePluga, constraint_date: dateStr }),
+        // A constraint may target this pluga either via the singular `pluga`
+        // column (how KlafConstraints.jsx itself saves one) or via the
+        // `plugas` array (how the admin's multi-select "אילוצים" page saves
+        // one) — fetch the day's constraints and match both shapes
+        // client-side rather than filtering by `pluga` alone, so an
+        // admin-created multi-pluga constraint still shows up here.
+        base44.entities.Constraint.filter({ constraint_date: dateStr }),
         base44.entities.EventConfirmation.filter({ pluga: effectivePluga }),
         base44.entities.EventContact.list("-created_date", 500),
       ]);
@@ -55,7 +61,7 @@ export default function Klaf() {
         dt.pluga === effectivePluga ||
         (dt.responsible_plugas && dt.responsible_plugas.includes(effectivePluga))
       ));
-      setConstraints(constraintData);
+      setConstraints(constraintData.filter((c) => c.pluga === effectivePluga || c.plugas?.includes(effectivePluga)));
       // Only today's events matter here; the confirmation feature is scoped
       // to the selected day like the rest of this page.
       const todaysEventIds = new Set(eventData.map((e) => e.id));

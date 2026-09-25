@@ -8,6 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
 import { safeReturnTo } from "@/lib/authReturnTo";
+import { FlaskConical } from "lucide-react";
+import { enableTestMode } from "@/lib/testMode";
 
 const LOGO_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/98fcd8299_image.png";
 const HEADER_IMAGE_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/a3148ebb9_image.png";
@@ -42,6 +44,11 @@ export default function Login() {
     base44.auth.loginWithProvider("google", returnTo);
   };
 
+  const handleTestMode = () => {
+    enableTestMode();
+    window.location.href = "/";
+  };
+
   return (
     <AuthLayout
       imageUrl={LOGO_URL}
@@ -63,6 +70,18 @@ export default function Login() {
         <GoogleIcon className="w-5 h-5 mr-2" />
         המשך עם Google
       </Button>
+
+      <Button
+        variant="outline"
+        className="w-full h-11 text-sm font-medium mt-2 border-dashed"
+        onClick={handleTestMode}
+      >
+        <FlaskConical className="w-4 h-4 mr-2" />
+        כניסה למצב בדיקה (ללא Supabase)
+      </Button>
+      <p className="text-xs text-muted-foreground text-center mt-1.5 leading-relaxed">
+        נכנס כאדמין עם נתוני דמו מקומיים בלבד — לא נוגע בנתונים האמיתיים.
+      </p>
 
       <Dialog open={accessOpen} onOpenChange={setAccessOpen}>
         <DialogContent dir="rtl" className="max-h-[85vh] overflow-y-auto">

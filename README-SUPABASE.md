@@ -27,6 +27,16 @@ checklist — do these steps in order.
 - `supabase/migrations/0002_seed_data.sql` imports your real historical data
   from the 15 CSV files you exported out of Base44 (see step 7 below — this
   replaces the manual "import CSV via Table Editor" approach entirely).
+- `supabase/migrations/0003_direct_tasks_nullable_date.sql` makes
+  `direct_tasks.task_date` nullable, so an admin can create a general/weekly
+  task with no date yet ("backlog") and assign it to a day later from the
+  Tasks page.
+- `supabase/migrations/0004_event_contacts_confirmations.sql` adds event
+  contact persons (e.g. a bus driver, with a call button) and per-pluga
+  confirmation tracking for events (confirm checkbox, live reminder/escalation
+  styling, admin oversight dashboard) — plus adds a few more tables to the
+  realtime publication so live badges/timelines actually update without a
+  page refresh.
 - The 3 Base44 backend functions became Vercel serverless functions under
   `/api`, plus a 4th (`/api/invite-user.js`) that replaces
   `base44.users.inviteUser` (admin invites need the service-role key, which
@@ -44,7 +54,7 @@ checklist — do these steps in order.
 ## 1. Run the database migrations
 
 In the Supabase dashboard for your project: **SQL Editor → New query**, and
-run these three files **in order** (paste each one's contents, run, then move
+run these files **in order** (paste each one's contents, run, then move
 to the next):
 
 1. `supabase/migrations/0001_init.sql` — creates every table, the `profiles`
@@ -54,9 +64,13 @@ to the next):
    even if you don't think you need it.
 3. `supabase/migrations/0002_seed_data.sql` — your real data from Base44 (see
    step 7).
+4. `supabase/migrations/0003_direct_tasks_nullable_date.sql` — safe/idempotent,
+   needed for the "general task with no date" feature.
+5. `supabase/migrations/0004_event_contacts_confirmations.sql` — safe/
+   idempotent, needed for the event contacts/confirmation feature.
 
 (Or, if you use the Supabase CLI: `supabase db push` after `supabase link` —
-it will pick up all three in filename order.)
+it will pick up all five in filename order.)
 
 ## 2. Turn on email-OTP signup (only if you'll use the Register page)
 
@@ -151,3 +165,76 @@ Vercel function) and fill in the two `TODO`s in `api/submit-access-request.js`
 and `api/process-withdrawal.js`. Both already have the full HTML/recipient
 logic ported from the original Base44 functions — just add the actual send
 call.
+
+## Test playground (manually clicking through every feature/edge case)
+
+There are two ways to get realistic test data across all 5 plugot for
+manually clicking through every feature/edge case. Test mode (below) is the
+simpler one — reach for the SQL scripts only if you specifically want the
+data to live in the real Supabase project (visible in the dashboard,
+shareable with a teammate via a real login, etc).
+
+### Test mode — in the app, no Supabase involved at all
+
+Click **"כניסה למצב בדיקה (ללא Supabase)"** on the login screen. This logs
+you in as a fake local admin backed entirely by an in-memory data store
+(`src/testdata/fixtures.js` + `src/testdata/mockStore.js`) — nothing is ever
+read from or written to your real Supabase project while it's on, and
+nothing you do in test mode can affect real data. It ships pre-seeded with
+the exact same scenarios described below (fully/partially/un-assigned days,
+overlapping event+constraint, backlog tasks, all 5 event-confirmation
+states, ...), computed relative to the moment the page loads — so unlike the
+SQL scripts there's nothing to remember to re-run; every reload is
+automatically fresh.
+
+While it's on, an admin menu (the user-cog icon, "תצוגה" tab) shows an amber
+"מצב בדיקה פעיל" box with two buttons: **אפס נתוני בדיקה** (reseed fresh
+fixtures without leaving test mode) and **יציאה ממצב בדיקה** (turn it off
+and go back to the real login). Combine it with the existing "תצוגת תפקיד"
+preview switcher right below to click through the app as any pluga's klaf.
+
+Scope: pre-seeded with realistic data are the 6 original features (Klaf, the
+daily schedule/constraints, Tasks, the TopNav badge, event confirmations),
+plus פערים/gaps (every status/priority, a couple of stale ones, one with a
+full update/comment history) and משיכות ציוד/equipment (items across all 3
+warehouses, one overdue holding, one open-ended holding, and pending/
+approved/rejected withdrawal requests). Pages built on anything else
+(סטטיסטיקה, and the "בקשות גישה"/"משתמשים" tabs in the admin menu) will show
+empty while test mode is on — expected, not a bug, since test mode never
+opens a real Supabase session and those aren't backed by fixtures.
+
+### Alternative: SQL scripts against the real project
+
+`supabase/test-data/` has three scripts, run in the SQL Editor against this
+same project — no separate test project needed. They only ever touch rows
+with fixed test ids and a `[TEST]` title prefix, and are all safe to re-run
+any number of times (each deletes its own rows before re-inserting them, so
+nothing duplicates). You don't need a real klaf account to see any of it —
+sign in as your admin and use the "preview as klaf" switcher already in the
+app.
+
+1. **`seed_test_playground.sql`** — the bulk of it: a fully-assigned day, a
+   partially-assigned/mixed-completion day, a fully-unassigned day, a day
+   with an overlapping event+constraint and a constraint crossing midnight,
+   a deliberately empty day, and a fully-completed day — plus backlog tasks
+   with no date, a task assigned to all 5 plugot, and a constraint saved
+   both ways (single `pluga` and multi-`plugas`) so both save paths show up
+   on the klaf's own timeline. Dates are computed relative to *today* (D+0
+   through D+6) each time the script runs, so the data always shows up where
+   you'd naturally look in the app — no need to navigate to some far-off
+   date. That also means it's meant to be **re-run each time you sit down to
+   test** (like script 2 below); running it once and coming back tomorrow
+   without re-running it just means "today's" test day is now yesterday's.
+2. **`refresh_test_confirmations.sql`** — the event-contact/confirmation
+   feature specifically. Its 5 events are scheduled *relative to whenever
+   you run it* (event-confirmation reminder/escalation timing is computed
+   live from "now" in the app down to the hour, not just the date, so it
+   needs its own script rather than reusing script 1's day-level offsets) —
+   one already confirmed, one well before its reminder time, one past the
+   reminder threshold, one past its start time and still unconfirmed, and
+   one serving all 5 plugot at once with a mix of confirmed/unconfirmed plus
+   2 contacts with call buttons. **Re-run this one each time you sit down to
+   test** so the states are fresh.
+3. **`clear_test_playground.sql`** — removes everything the two scripts
+   above inserted, in one go, when you're done testing. Ends with a sanity
+   `select` that should show `0` remaining test rows.
