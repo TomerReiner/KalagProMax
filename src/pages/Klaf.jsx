@@ -12,10 +12,14 @@ import KlafSummary from "@/components/klaf/KlafSummary";
 import KlafEventConfirmations from "@/components/klaf/KlafEventConfirmations";
 import { usePreviewRole } from "@/lib/previewRoleContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { plugotFor, hasPermission } from "@/lib/permissions";
+import { getFoodPickupState, FOOD_PICKUP_STATE_LABELS } from "@/lib/eventConfirmations";
+import KlafMealRegulators from "@/components/klaf/KlafMealRegulators";
 
 export default function Klaf() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  const [myPermissions, setMyPermissions] = useState([]);
   const { previewRole, previewPluga, setPreviewPluga } = usePreviewRole();
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const dateStr = toDateStr(selectedDate);
@@ -29,12 +33,30 @@ export default function Klaf() {
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
+  // Which pluga a delegated meal_regulators-only visitor (no קלפ role at
+  // all) is currently viewing — real קלפ users use previewPluga/user.pluga
+  // instead, same as before.
+  const [delegatedPluga, setDelegatedPluga] = useState(null);
 
   useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
   }, []);
 
+  // Permissions delegated to *this signed-in user* (not the previewed role) —
+  // right now only frisa_pina matters here: it lets someone complete the
+  // "משיכת פינת פריסה" task on behalf of a pluga other than their own.
+  useEffect(() => {
+    if (!user?.id) { setMyPermissions([]); return; }
+    base44.entities.UserPermission.filter({ user_id: user.id }).then(setMyPermissions).catch(() => setMyPermissions([]));
+  }, [user?.id]);
+
   const loadData = useCallback(async () => {
+    // The full task/schedule data this loads is only used by the full קלפ
+    // page below — a delegated meal_regulators-only visitor gets a minimal
+    // page (see isDelegatedOnly) that doesn't need any of it, so this stays
+    // a no-op for them.
+    const effectiveRoleForLoad = previewRole || user?.role;
+    if (effectiveRoleForLoad !== "קלפ") return;
     const effectivePluga = previewRole === "קלפ" ? previewPluga : user?.pluga;
     if (!effectivePluga) return;
     setLoading(true);
@@ -100,10 +122,57 @@ export default function Klaf() {
   }
 
   const effectiveRole = previewRole || user.role;
-  if (effectiveRole !== "קלפ") {
+  const isKlaf = effectiveRole === "קלפ";
+  // Other plugot this signed-in user was delegated the meal_regulators
+  // permission for (see src/lib/permissions.js / AdminPanel's "הרשאות
+  // מיוחדות"). A non-קלפ holder of this permission gets a minimal version of
+  // this page (see isDelegatedOnly below) instead of being blocked outright.
+  const regulatorPlugot = plugotFor(myPermissions, "meal_regulators");
+  const isDelegatedOnly = !isKlaf && regulatorPlugot.length > 0;
+
+  if (!isKlaf && !isDelegatedOnly) {
     return (
       <div className="text-center py-20 text-muted-foreground">
         <p>דף זה זמין לקלפ בלבד</p>
+      </div>
+    );
+  }
+
+  if (isDelegatedOnly) {
+    const dPluga = delegatedPluga || regulatorPlugot[0];
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+        <div className="text-center">
+          <div className="flex items-center justify-center gap-3 mb-1">
+            <Button variant="outline" size="icon" onClick={goPrevDay}>
+              <ChevronRight className="w-5 h-5" />
+            </Button>
+            <h1 className="text-xl font-bold">{formatHebrewDate(selectedDate)}</h1>
+            <Button variant="outline" size="icon" onClick={goNextDay}>
+              <ChevronLeft className="w-5 h-5" />
+            </Button>
+          </div>
+          <button onClick={goToday} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            חזור להיום
+          </button>
+        </div>
+        {regulatorPlugot.length > 1 ? (
+          <Select value={dPluga} onValueChange={setDelegatedPluga}>
+            <SelectTrigger className="w-[180px] mx-auto"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {regulatorPlugot.map((p) => (
+                <SelectItem key={p} value={p}>{p}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <p className="text-sm font-medium text-center">
+            פלוגה: <span className="font-bold">{dPluga}</span>
+          </p>
+        )}
+        <div className="rounded-xl border border-border p-3 bg-white">
+          <KlafMealRegulators pluga={dPluga} dateStr={dateStr} />
+        </div>
       </div>
     );
   }
@@ -131,12 +200,20 @@ export default function Klaf() {
   // tasks that haven't been assigned to any pluga yet. A genuine קלפ user never sees them.
   const isAdminPreview = user.role === "admin";
 
+  // Other plugot this signed-in user was delegated the frisa_pina permission
+  // for (see src/lib/permissions.js / AdminPanel's "הרשאות מיוחדות"). Lets
+  // them complete the frisa task below on a day it's assigned to one of
+  // those plugot, not just their own.
+  const frisaExtraPlugot = plugotFor(myPermissions, "frisa_pina").filter((p) => p !== pluga);
+
   // Build tasks (list)
   const tasks = [];
 
   if (routine) {
     if (routine.frisa_morning === pluga) {
       tasks.push({ type: "shotaf", id: routine.id, field: "frisa_morning", label: "משיכת פינת פריסה", icon: Sun });
+    } else if (frisaExtraPlugot.includes(routine.frisa_morning)) {
+      tasks.push({ type: "shotaf", id: routine.id, field: "frisa_morning", label: `משיכת פינת פריסה (עבור ${routine.frisa_morning})`, icon: Sun, completionPluga: routine.frisa_morning });
     } else if (!routine.frisa_morning || routine.frisa_morning === "טרם הוחלט") {
       tasks.push({ type: "shotaf", id: routine.id, field: "frisa_morning", label: "משיכת פינת פריסה", icon: Sun, unassigned: true });
     }
@@ -166,7 +243,7 @@ export default function Klaf() {
         tasks.push({ type: "event", id: e.id, field: "transport", label: `${e.title} - הסעים`, icon: Truck, event: e });
       }
       if (e.food_pluga === pluga) {
-        tasks.push({ type: "event", id: e.id, field: "food", label: `${e.title} - אוכל`, icon: UtensilsCrossed, event: e });
+        tasks.push({ type: "event", id: e.id, field: "food", label: `${e.title} - אוכל`, icon: UtensilsCrossed, event: e, foodPickupState: getFoodPickupState(e) });
       }
     }
   });
@@ -240,7 +317,9 @@ export default function Klaf() {
           task_field: task.field,
           task_label: task.label,
           task_date: dateStr,
-          pluga,
+          // A frisa_pina-delegated task is completed on behalf of the
+          // pluga it's actually assigned to that day, not the viewer's own.
+          pluga: task.completionPluga || pluga,
         });
       }
       await loadData();
@@ -380,6 +459,16 @@ export default function Klaf() {
                             טרם הוחלט
                           </span>
                         )}
+                        {task.foodPickupState && task.foodPickupState !== "upcoming" && (
+                          <span className={cn(
+                            "text-xs font-medium px-2 py-0.5 rounded-full",
+                            task.foodPickupState === "overdue" ? "text-red-700 bg-red-100" :
+                            task.foodPickupState === "urgent" ? "text-amber-700 bg-amber-100" :
+                            "text-blue-700 bg-blue-100"
+                          )}>
+                            {FOOD_PICKUP_STATE_LABELS[task.foodPickupState]}
+                          </span>
+                        )}
                       </div>
                       {task.event && (
                         <p className="text-xs text-muted-foreground mt-0.5">
@@ -434,6 +523,12 @@ export default function Klaf() {
           <KlafConstraints pluga={pluga} dateStr={dateStr} onChange={loadData} />
           <KlafSummary dateStr={dateStr} />
         </div>
+
+        {hasPermission(myPermissions, "meal_regulators", pluga) && (
+          <div className="rounded-xl border border-border p-3 bg-white mt-2">
+            <KlafMealRegulators pluga={pluga} dateStr={dateStr} />
+          </div>
+        )}
         </>
       )}
 

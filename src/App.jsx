@@ -22,11 +22,19 @@ import Tasks from '@/pages/Tasks';
 import Klaf from '@/pages/Klaf';
 import Statistics from '@/pages/Statistics';
 import Equipment from '@/pages/Equipment';
+import Playbox from '@/pages/Playbox';
 // Add page imports here
 // Note: the Base44 MCP OAuth-consent page (src/pages/OAuthConsent.jsx) was
 // dropped here — it authorized AI clients against Base44's own hosted MCP
 // server, which no longer exists once the app runs on Supabase/Vercel. The
 // file is left on disk but is no longer imported or routed.
+// Note: src/pages/Delegations.jsx (a standalone "האצלות" page/tab for the
+// delegated-permissions feature) is likewise left on disk but unrouted — a
+// combined grab-bag tab wasn't wanted, so each capability now lives where it
+// naturally fits instead: frisa_pina and meal_regulators fold into Klaf.jsx,
+// and playbox_orders gets its own focused page/route (see Playbox.jsx /
+// /playbox above). Equipment withdrawal delegation (equipment_manager) was
+// already its own thing on profiles before this feature existed.
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -68,6 +76,7 @@ const AuthenticatedApp = () => {
           <Route path="/klaf" element={<Klaf />} />
           <Route path="/statistics" element={<Statistics />} />
           <Route path="/equipment" element={<Equipment />} />
+          <Route path="/playbox" element={<Playbox />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />

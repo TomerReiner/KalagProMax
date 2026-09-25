@@ -16,6 +16,15 @@
 // this browser tab's memory (see src/testdata/mockStore.js) and never
 // touches the real Supabase project, so there's nothing to mark for
 // later bulk-deletion the way the SQL scripts' rows need to be.
+//
+// Also covers the delegated-permissions feature (user_permissions,
+// playbox_orders, meal_regulators — see src/lib/permissions.js): the test
+// profile is pre-granted all three permission keys, so there's something to
+// see on /playbox and in Klaf.jsx's meal-regulators section right away.
+// "משיכת מזון לנסיעות" isn't a permission/table anymore — it's the
+// food_pickup_needed checkbox on an event, covered instead by the
+// food-pickup-reminder scenario events further down (see getFoodPickupState
+// in src/lib/eventConfirmations.js).
 
 function pad(n) {
   return String(n).padStart(2, "0");
@@ -112,6 +121,19 @@ export function buildFixtures() {
     // Scenario 5: 45 min out, 90-min offset -> threshold was 45 min ago ->
     // unconfirmed plugot show 'reminder'. All 5 plugot + 2 contacts.
     { id: "90000000-0000-4000-8000-000000000005", event_type: "חיצוני", event_date: dateStr(minuteOffset(45)), start_time: timeStr(minuteOffset(45)), end_time: timeStr(minuteOffset(225)), title: "אירוע לכל הפלוגות - סטטוסים מעורבים", details: "תרחיש: חלק אישרו, חלק לא, כל הפלוגות", transport_pluga: null, transport_details: null, food_pluga: null, food_details: null, responsible_plugas: ["פארן", "בשור", "צין", "רמון", "תמר"], reminder_offset_minutes: 90, ...stamp },
+
+    // --- food-pickup reminder scenarios (events.food_pickup_needed — see
+    // getFoodPickupState() in src/lib/eventConfirmations.js). Mirrors the
+    // event-confirmation scenarios above but against the food-pickup
+    // thresholds (24h-before reminder, 90-min urgent, then overdue) instead.
+    // Scenario F1: ~30h out -> before the 24h-before threshold -> 'upcoming' (no badge yet)
+    { id: "95000000-0000-4000-8000-000000000001", event_type: "חיצוני", event_date: dateStr(minuteOffset(1800)), start_time: timeStr(minuteOffset(1800)), end_time: timeStr(minuteOffset(1860)), title: "פעילות חוץ - פארן", details: "תרחיש משיכת אוכל: לפני סף התזכורת", transport_pluga: null, transport_details: null, food_pluga: "פארן", food_details: "כריכים ל-20 אנשים", responsible_plugas: null, reminder_offset_minutes: null, food_pickup_needed: true, ...stamp },
+    // Scenario F2: ~20h out -> past the 24h-before threshold, before the 90-min urgent one -> 'reminder'
+    { id: "95000000-0000-4000-8000-000000000002", event_type: "חיצוני", event_date: dateStr(minuteOffset(1200)), start_time: timeStr(minuteOffset(1200)), end_time: timeStr(minuteOffset(1260)), title: "פעילות חוץ - בשור", details: "תרחיש משיכת אוכל: יום לפני האירוע", transport_pluga: null, transport_details: null, food_pluga: "בשור", food_details: "כריכים ל-15 אנשים", responsible_plugas: null, reminder_offset_minutes: null, food_pickup_needed: true, ...stamp },
+    // Scenario F3: 45 min out -> inside the 90-min urgent window -> 'urgent'
+    { id: "95000000-0000-4000-8000-000000000003", event_type: "חיצוני", event_date: dateStr(minuteOffset(45)), start_time: timeStr(minuteOffset(45)), end_time: timeStr(minuteOffset(105)), title: "פעילות חוץ - צין", details: "תרחיש משיכת אוכל: קרוב מאוד", transport_pluga: null, transport_details: null, food_pluga: "צין", food_details: "ארוחת צהריים בשטח", responsible_plugas: null, reminder_offset_minutes: null, food_pickup_needed: true, ...stamp },
+    // Scenario F4: started 30 min ago -> past the event's start time -> 'overdue'
+    { id: "95000000-0000-4000-8000-000000000004", event_type: "חיצוני", event_date: dateStr(minuteOffset(-30)), start_time: timeStr(minuteOffset(-30)), end_time: timeStr(minuteOffset(30)), title: "פעילות חוץ - רמון", details: "תרחיש משיכת אוכל: המועד עבר", transport_pluga: null, transport_details: null, food_pluga: "רמון", food_details: "ארוחת בוקר בשטח", responsible_plugas: null, reminder_offset_minutes: null, food_pickup_needed: true, ...stamp },
   ];
 
   const constraints = [
@@ -242,6 +264,65 @@ export function buildFixtures() {
     { id: "63000000-0000-4000-8000-000000000004", warehouse: "מחסן קרביץ", items: [{ name: "רתמות", quantity: 5, returnable: true }], requested_by_name: "רב\"ט בשור", pluga: "בשור", request_date: dateStr(dayOffset(-2)), expected_return_date: dateStr(D1), notes: "אין מספיק מלאי כרגע", status: "rejected", approved_by_name: "מנהל מצב בדיקה", ...stamp },
   ];
 
+  // ---------------------------------------------------------------------
+  // profiles (the "משתמשים" tab in the admin menu) — a handful of fake
+  // users across every role/pluga, purely so there's something to click
+  // through in test mode: expand "הרשאות מיוחדות" for any of them to see
+  // the admin-side granting UI, some pre-populated (see user_permissions
+  // below), some empty so you can try granting one yourself. In test mode
+  // this is the ONLY source for base44.entities.User.list() — the real
+  // auth/profile flow (base44.auth.me()) still always returns the fixed
+  // admin profile from buildProfile() above, independent of this list.
+  // ---------------------------------------------------------------------
+  const profiles = [
+    { id: "00000000-0000-4000-8000-000000000000", email: "test-admin@local.test", full_name: "מנהל מצב בדיקה", role: "admin", pluga: null, equipment_manager: false, notifications_last_read: null, ...stamp },
+    { id: "e0000000-0000-4000-8000-000000000001", email: "roi.cohen@local.test", full_name: "רועי כהן", role: "קלפ", pluga: "פארן", equipment_manager: false, notifications_last_read: null, ...stamp },
+    { id: "e0000000-0000-4000-8000-000000000002", email: "dana.levi@local.test", full_name: "דנה לוי", role: "קלפ", pluga: "בשור", equipment_manager: false, notifications_last_read: null, ...stamp },
+    { id: "e0000000-0000-4000-8000-000000000003", email: "omer.mizrahi@local.test", full_name: "עומר מזרחי", role: "קלפ", pluga: "צין", equipment_manager: true, notifications_last_read: null, ...stamp },
+    { id: "e0000000-0000-4000-8000-000000000004", email: "shira.david@local.test", full_name: "שירה דוד", role: "קלפ", pluga: "רמון", equipment_manager: false, notifications_last_read: null, ...stamp },
+    { id: "e0000000-0000-4000-8000-000000000005", email: "itai.peretz@local.test", full_name: "איתי פרץ", role: "קלפ", pluga: "תמר", equipment_manager: false, notifications_last_read: null, ...stamp },
+    { id: "e0000000-0000-4000-8000-000000000006", email: "noa.avraham@local.test", full_name: "נועה אברהם", role: "רסר", pluga: null, equipment_manager: false, notifications_last_read: null, ...stamp },
+    { id: "e0000000-0000-4000-8000-000000000007", email: "yuval.shimon@local.test", full_name: "יובל שמעון", role: "סגל", pluga: null, equipment_manager: false, notifications_last_read: null, ...stamp },
+  ];
+
+  // ---------------------------------------------------------------------
+  // Delegated permissions (see src/lib/permissions.js). The test profile
+  // (role: admin) holds all three keys, so its own screens (Klaf.jsx's
+  // meal-regulators section, /playbox, the frisa task) have something to
+  // show right away. A few of the demo users above are ALSO pre-granted
+  // permissions, so expanding "הרשאות מיוחדות" for them in "ניהול משתמשים"
+  // → משתמשים shows real, already-checked boxes — not just an empty form —
+  // including the "one permission, several plugot" case (דנה לוי holds
+  // frisa_pina for two plugot at once, exactly the scenario that shaped
+  // this schema). Other demo users are left with none, to try granting
+  // from a clean state.
+  // ---------------------------------------------------------------------
+  const user_permissions = [
+    { id: "80000000-0000-4000-8000-000000000001", user_id: "00000000-0000-4000-8000-000000000000", permission: "frisa_pina", pluga: "בשור", ...stamp },
+    { id: "80000000-0000-4000-8000-000000000002", user_id: "00000000-0000-4000-8000-000000000000", permission: "frisa_pina", pluga: "צין", ...stamp },
+    { id: "80000000-0000-4000-8000-000000000003", user_id: "00000000-0000-4000-8000-000000000000", permission: "playbox_orders", pluga: null, ...stamp },
+    { id: "80000000-0000-4000-8000-000000000004", user_id: "00000000-0000-4000-8000-000000000000", permission: "meal_regulators", pluga: "פארן", ...stamp },
+    // דנה לוי (קלפ, בשור): פינת פריסה עבור שתי פלוגות — ההדגמה הישירה של
+    // "הרשאה אחת, כמה פלוגות" דרך שתי שורות.
+    { id: "80000000-0000-4000-8000-000000000007", user_id: "e0000000-0000-4000-8000-000000000002", permission: "frisa_pina", pluga: "בשור", ...stamp },
+    { id: "80000000-0000-4000-8000-000000000008", user_id: "e0000000-0000-4000-8000-000000000002", permission: "frisa_pina", pluga: "פארן", ...stamp },
+    // איתי פרץ (קלפ, תמר): מווסתים לפלוגה שלו.
+    { id: "80000000-0000-4000-8000-000000000009", user_id: "e0000000-0000-4000-8000-000000000005", permission: "meal_regulators", pluga: "תמר", ...stamp },
+    // יובל שמעון (סגל): האחראי הכלל-ארגוני על הזמנות פלייבוקס.
+    { id: "80000000-0000-4000-8000-000000000010", user_id: "e0000000-0000-4000-8000-000000000007", permission: "playbox_orders", pluga: null, ...stamp },
+  ];
+
+  const playbox_orders = [
+    { id: "81000000-0000-4000-8000-000000000001", pluga: "פארן", order_date: dateStr(D1), item: "חטיפים", quantity: 10, notes: null, status: "ממתין", ...stamp },
+    { id: "81000000-0000-4000-8000-000000000002", pluga: "בשור", order_date: dateStr(D2), item: "שתייה קלה", quantity: 24, notes: "לאירוע יום שלישי", status: "הוזמן", ...stamp },
+    { id: "81000000-0000-4000-8000-000000000003", pluga: "צין", order_date: dateStr(D0), item: "עוגות", quantity: 3, notes: null, status: "בוטל", ...stamp },
+  ];
+
+  const meal_regulators = [
+    { id: "82000000-0000-4000-8000-000000000001", pluga: "פארן", meal_date: dateStr(D0), meal_type: "צהריים", names: ["רב\"ט כהן", "טוראי לוי"], ...stamp },
+    { id: "82000000-0000-4000-8000-000000000002", pluga: "פארן", meal_date: dateStr(D0), meal_type: "ערב", names: ["סמל מזרחי", "טוראי אבו", "רב\"ט דוד"], ...stamp },
+  ];
+
   return {
     daily_routines,
     events,
@@ -256,5 +337,9 @@ export function buildFixtures() {
     equipment_holdings,
     equipment_settings,
     withdrawal_requests,
+    profiles,
+    user_permissions,
+    playbox_orders,
+    meal_regulators,
   };
 }

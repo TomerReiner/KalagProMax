@@ -1,9 +1,12 @@
 // The in-memory "database" behind test mode. Mirrors the Supabase tables
 // listed in fixtures.js — the 6 original features (Klaf page, TopNav badge,
 // daily schedule + constraints, backlog tasks, event confirmations, sticky
-// nav) plus gaps and equipment/withdrawals. Nothing here ever calls
-// Supabase; it's plain arrays in a JS module, reset on every full page load
-// and whenever resetTestData() is called.
+// nav), gaps and equipment/withdrawals, and the delegated-permissions
+// feature (user_permissions, playbox_orders, meal_regulators — events.
+// food_pickup_needed is just a plain column on the events table already
+// covered above, not a table of its own). Nothing here ever calls Supabase;
+// it's plain arrays in a JS module, reset on every full page load and
+// whenever resetTestData() is called.
 //
 // Any table name not listed in fixtures.js (AccessRequest, the real
 // User/profiles list, RecurringEvent, ...) still gets routed here while

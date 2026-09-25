@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Phone, Trash2, UserPlus, BellRing } from "lucide-react";
 import TimeInput from "@/components/TimeInput";
 import { PLUGOT, PLUGA_COLORS, toDateStr } from "@/lib/constants";
@@ -23,6 +24,7 @@ const emptyForm = {
   transport_details: "",
   food_pluga: "",
   food_details: "",
+  food_pickup_needed: false,
   responsible_plugas: [],
 };
 
@@ -282,6 +284,16 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
                       placeholder="פרטי אוכל"
                     />
                   </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="food_pickup_needed"
+                    checked={!!form.food_pickup_needed}
+                    onCheckedChange={(v) => setForm({ ...form, food_pickup_needed: !!v })}
+                  />
+                  <Label htmlFor="food_pickup_needed" className="cursor-pointer font-normal">
+                    צריך למשוך אוכל (למשל מקיבוץ עינת) — הפלוגה האחראית תקבל תזכורת יום לפני ושעה וחצי לפני
+                  </Label>
                 </div>
               </div>
             </>

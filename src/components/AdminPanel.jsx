@@ -4,13 +4,15 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { UserCog, Check, X, Loader2, Mail, Users, FlaskConical, RotateCcw, LogOut } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { UserCog, Check, X, Loader2, Mail, Users, FlaskConical, RotateCcw, LogOut, ChevronDown, ChevronUp } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { PLUGOT } from "@/lib/constants";
 import { usePreviewRole } from "@/lib/previewRoleContext";
 import { cn } from "@/lib/utils";
 import { isTestMode, disableTestMode } from "@/lib/testMode";
 import { resetTestData } from "@/testdata/mockStore";
+import { PERMISSION_LIST, hasPermission } from "@/lib/permissions";
 
 const ROLES = ["קלפ", "רסר", "סגל", "admin"];
 
@@ -26,6 +28,9 @@ export default function AdminPanel() {
   const [tab, setTab] = useState("requests");
   const [updatingUser, setUpdatingUser] = useState(null);
   const [error, setError] = useState(null);
+  const [permissions, setPermissions] = useState([]);
+  const [expandedUser, setExpandedUser] = useState(null);
+  const [togglingPerm, setTogglingPerm] = useState(null);
   const { toast } = useToast();
   const { previewRole, setPreviewRole, previewPluga, setPreviewPluga } = usePreviewRole();
 
@@ -53,13 +58,23 @@ export default function AdminPanel() {
     }
   }, []);
 
+  const loadPermissions = useCallback(async () => {
+    try {
+      const data = await base44.entities.UserPermission.list();
+      setPermissions(data);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     if (user?.role !== "admin") return;
     loadRequests();
     loadUsers();
+    loadPermissions();
     const unsubscribe = base44.entities.AccessRequest.subscribe(() => loadRequests());
     return unsubscribe;
-  }, [user, loadRequests, loadUsers]);
+  }, [user, loadRequests, loadUsers, loadPermissions]);
 
   if (user?.role !== "admin") return null;
 
@@ -159,6 +174,36 @@ export default function AdminPanel() {
       toast({ title: "שגיאה בעדכון", description: err.message, variant: "destructive" });
     } finally {
       setUpdatingUser(null);
+    }
+  };
+
+  const permsFor = (userId) => permissions.filter((p) => p.user_id === userId);
+
+  // pluga === null toggles a global grant (playbox_orders); otherwise a
+  // scoped grant for that one pluga. Multiple plugot for the same
+  // permission are just multiple rows — see src/lib/permissions.js.
+  const handleTogglePermission = async (userId, permissionKey, pluga) => {
+    const busyKey = `${userId}_${permissionKey}_${pluga || "global"}`;
+    setTogglingPerm(busyKey);
+    try {
+      const existing = permissions.find((p) =>
+        p.user_id === userId &&
+        p.permission === permissionKey &&
+        (pluga == null ? p.pluga == null : p.pluga === pluga)
+      );
+      if (existing) {
+        await base44.entities.UserPermission.delete(existing.id);
+        toast({ title: "ההרשאה הוסרה", duration: 1500 });
+      } else {
+        await base44.entities.UserPermission.create({ user_id: userId, permission: permissionKey, pluga: pluga || null });
+        toast({ title: "ההרשאה הוענקה", duration: 1500 });
+      }
+      await loadPermissions();
+    } catch (err) {
+      console.error(err);
+      toast({ title: "שגיאה בעדכון ההרשאה", description: err.message, variant: "destructive" });
+    } finally {
+      setTogglingPerm(null);
     }
   };
 
@@ -417,14 +462,64 @@ export default function AdminPanel() {
                       </Select>
                     </div>
                   )}
-                  {u.role === "קלפ" && (
-                    <div className="flex items-center justify-between pt-1">
-                      <span className="text-xs text-muted-foreground">אחראי משיכות ציוד</span>
-                      <Switch
-                        checked={!!u.equipment_manager}
-                        onCheckedChange={(v) => handleToggleEquipmentManager(u.id, v)}
-                        disabled={updatingUser === u.id}
-                      />
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-xs text-muted-foreground">אחראי משיכות ציוד</span>
+                    <Switch
+                      checked={!!u.equipment_manager}
+                      onCheckedChange={(v) => handleToggleEquipmentManager(u.id, v)}
+                      disabled={updatingUser === u.id}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setExpandedUser((cur) => (cur === u.id ? null : u.id))}
+                    className="w-full flex items-center justify-between pt-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <span>הרשאות מיוחדות{permsFor(u.id).length > 0 ? ` (${permsFor(u.id).length})` : ""}</span>
+                    {expandedUser === u.id ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+
+                  {expandedUser === u.id && (
+                    <div className="space-y-3 pt-1 border-t">
+                      {PERMISSION_LIST.map((perm) => {
+                        const userPerms = permsFor(u.id);
+                        return (
+                          <div key={perm.key} className="space-y-1.5 pt-2">
+                            <div>
+                              <p className="text-xs font-medium">{perm.label}</p>
+                              <p className="text-[11px] text-muted-foreground leading-relaxed">{perm.description}</p>
+                            </div>
+                            {perm.scoped ? (
+                              <div className="flex flex-wrap gap-2.5">
+                                {PLUGOT.map((p) => {
+                                  const busyKey = `${u.id}_${perm.key}_${p}`;
+                                  const checked = hasPermission(userPerms, perm.key, p);
+                                  return (
+                                    <label key={p} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                                      <Checkbox
+                                        checked={checked}
+                                        disabled={togglingPerm === busyKey}
+                                        onCheckedChange={() => handleTogglePermission(u.id, perm.key, p)}
+                                      />
+                                      {p}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-muted-foreground">מוענק (כלל־ארגוני)</span>
+                                <Switch
+                                  checked={hasPermission(userPerms, perm.key)}
+                                  disabled={togglingPerm === `${u.id}_${perm.key}_global`}
+                                  onCheckedChange={() => handleTogglePermission(u.id, perm.key, null)}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

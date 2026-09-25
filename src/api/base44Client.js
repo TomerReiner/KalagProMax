@@ -146,6 +146,13 @@ const entities = {
   User: makeEntity('profiles', { stampOwner: false }),
   WarehouseItem: makeEntity('warehouse_items'),
   WithdrawalRequest: makeEntity('withdrawal_requests'),
+  // Delegated-permissions feature (see supabase/migrations/0005_delegated_permissions.sql
+  // and src/lib/permissions.js). stampOwner here records which admin granted
+  // the permission (created_by/created_by_id) — user_id is the separate
+  // grantee column.
+  UserPermission: makeEntity('user_permissions'),
+  PlayboxOrder: makeEntity('playbox_orders'),
+  MealRegulator: makeEntity('meal_regulators'),
 };
 
 // ---------------------------------------------------------------------------

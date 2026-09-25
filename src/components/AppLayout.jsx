@@ -5,12 +5,18 @@ import TopNav from "./TopNav";
 import AdminPanel from "./AdminPanel";
 import NotificationsBell from "./NotificationsBell";
 import { usePreviewRole } from "@/lib/previewRoleContext";
+import { hasPermission, plugotFor } from "@/lib/permissions";
 
 const LOGO_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/98fcd8299_image.png";
 const CHARACTER_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/89a22bb0d_image.png";
 const WATERMARK_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/97bf84ed7_image.png";
 const HEADER_IMAGE_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/a3148ebb9_image.png";
 
+// Role-based page allowlist. Delegated permissions (src/lib/permissions.js)
+// can widen this for a specific signed-in user regardless of role — see the
+// extraAllowedPages logic below, which adds "/playbox" for a playbox_orders
+// grant and "/klaf" for a meal_regulators grant (both personal, independent
+// of role, so any role might hold one).
 const ROLE_PAGES = {
   admin: ["/", "/daily-summary", "/shotaf", "/constraints", "/tasks", "/statistics", "/equipment"],
   קלפ: ["/", "/daily-summary", "/constraints", "/klaf", "/equipment"],
@@ -29,6 +35,7 @@ export default function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  const [myPermissions, setMyPermissions] = useState([]);
   const { previewRole } = usePreviewRole();
 
   useEffect(() => {
@@ -36,13 +43,20 @@ export default function AppLayout() {
   }, []);
 
   useEffect(() => {
+    if (!user?.id) { setMyPermissions([]); return; }
+    base44.entities.UserPermission.filter({ user_id: user.id }).then(setMyPermissions).catch(() => setMyPermissions([]));
+  }, [user?.id]);
+
+  useEffect(() => {
     if (!user) return;
     const effectiveRole = previewRole || user.role;
-    const allowed = ROLE_PAGES[effectiveRole];
-    if (allowed && !allowed.includes(location.pathname)) {
+    const allowed = [...(ROLE_PAGES[effectiveRole] || [])];
+    if (hasPermission(myPermissions, "playbox_orders")) allowed.push("/playbox");
+    if (plugotFor(myPermissions, "meal_regulators").length > 0 && !allowed.includes("/klaf")) allowed.push("/klaf");
+    if (!allowed.includes(location.pathname)) {
       navigate(ROLE_DEFAULT_PAGE[effectiveRole] || "/", { replace: true });
     }
-  }, [user, location.pathname, previewRole]);
+  }, [user, location.pathname, previewRole, myPermissions]);
 
   return (
     <div dir="rtl" className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100/50 relative">

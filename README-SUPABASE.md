@@ -37,6 +37,16 @@ checklist — do these steps in order.
   styling, admin oversight dashboard) — plus adds a few more tables to the
   realtime publication so live badges/timelines actually update without a
   page refresh.
+- `supabase/migrations/0005_delegated_permissions.sql` adds the delegated-
+  permissions feature: `user_permissions` plus two new tables
+  (`playbox_orders`, `meal_regulators`), and a plain `food_pickup_needed`
+  boolean column on `events`. See the dedicated section below for how it
+  works.
+- `supabase/migrations/0006_drop_food_travel_requests.sql` — only matters if
+  you already ran an earlier draft of `0005` that created a
+  `food_travel_requests` table (that feature was redesigned into the
+  `food_pickup_needed` checkbox above before it ever really shipped). Drops
+  that table if it exists; a no-op on a project that never had it.
 - The 3 Base44 backend functions became Vercel serverless functions under
   `/api`, plus a 4th (`/api/invite-user.js`) that replaces
   `base44.users.inviteUser` (admin invites need the service-role key, which
@@ -68,9 +78,18 @@ to the next):
    needed for the "general task with no date" feature.
 5. `supabase/migrations/0004_event_contacts_confirmations.sql` — safe/
    idempotent, needed for the event contacts/confirmation feature.
+6. `supabase/migrations/0005_delegated_permissions.sql` — safe/idempotent,
+   needed for the delegated-permissions feature. **If you already ran an
+   earlier draft of this exact file** (one that created a
+   `food_travel_requests` table), re-running this updated version is still
+   safe — everything in it is idempotent, so it just adds the one thing
+   that's new (`events.food_pickup_needed`) and no-ops on the rest.
+7. `supabase/migrations/0006_drop_food_travel_requests.sql` — only needed if
+   you're in the situation above; drops the leftover `food_travel_requests`
+   table. Safe/no-op if you never had it.
 
 (Or, if you use the Supabase CLI: `supabase db push` after `supabase link` —
-it will pick up all five in filename order.)
+it will pick up all seven in filename order.)
 
 ## 2. Turn on email-OTP signup (only if you'll use the Register page)
 
@@ -158,6 +177,69 @@ Base44 a bit longer, say), the same approach works: export CSVs from Base44
 and ask for them to be converted into a new numbered migration file the same
 way.
 
+## Delegated permissions
+
+Admins can grant any user — any role, not just קלפ — one or more of three
+capabilities, independent of their normal role permissions. There's no
+standalone "delegated permissions" page for any of this; each capability
+was folded into wherever it naturally belongs in the app instead:
+
+- **פינת פריסה ומשיכה מהחד"א** (`frisa_pina`) — lets someone complete the
+  daily "משיכת פינת פריסה" task on behalf of a pluga other than their own,
+  e.g. one person doing the pickup for several plugot. Lives right on the
+  Klaf page (`src/pages/Klaf.jsx`), folded into the existing frisa task —
+  a klaf can always complete their own pluga's task as before; this just
+  extends that to other plugot on days it's assigned to one of them.
+- **ניהול מווסתים לארוחות** (`meal_regulators`) — day-by-day editing of the
+  2-3 named meal regulators per pluga, for lunch and dinner separately. Also
+  lives on the Klaf page: a real קלפ who holds this permission for their own
+  pluga sees it as an extra section on their normal page; someone with no
+  קלפ role at all who was delegated this for one or more plugot instead gets
+  a minimal version of the Klaf page (just a date/pluga picker and the
+  meal-regulators editor, no task list) when they visit `/klaf`.
+- **פלייבוקס והזמנות להמשך השבוע** (`playbox_orders`) — org-wide, not
+  per-pluga: whoever holds this sees a consolidated view of every pluga's
+  order requests, before placing the real order on Playbox's own site. This
+  one *does* get its own page — `src/pages/Playbox.jsx` at `/playbox` —
+  since it's a focused, single-purpose screen rather than a grab-bag of
+  unrelated tabs.
+
+**"משיכת מזון לנסיעות" turned out not to need a permission or a table at
+all.** It's just a checkbox on the event form itself
+(`events.food_pickup_needed`, added in `EventForm.jsx`) — when checked, the
+existing per-pluga "אוכל" task that already shows up on the Klaf page for
+that event gets live reminder styling as the event approaches: a "לזכור
+למשוך אוכל" badge starting 24 hours before, "למשוך אוכל בקרוב" inside the
+last 90 minutes, and "המועד עבר - יש למשוך אוכל" once the event's start time
+has passed. See `getFoodPickupState()` in `src/lib/eventConfirmations.js`
+(same live-recompute-on-a-client-tick pattern as the event-confirmation
+reminders) and `src/pages/Klaf.jsx` for where it's rendered.
+
+Grant permissions from the admin menu (user-cog icon) → **משתמשים** tab →
+expand **"הרשאות מיוחדות"** under any user. `frisa_pina` and
+`meal_regulators` are granted **per pluga** (checkboxes — check as many
+plugot as that person should cover); `playbox_orders` is a single org-wide
+switch. Equipment withdrawal access is *not* part of this system — it's the
+older `profiles.equipment_manager` flag, shown in the same place for
+convenience but stored separately (it already was exactly this kind of
+personal, role-independent flag, so there was no need to migrate it).
+
+Storage: `user_permissions` has one row per `(user_id, permission, pluga)`
+grant. A permission covering several plugot for the same person is simply
+several rows — **never** an array column — which sidesteps the `pluga` vs
+`plugas` dual-shape that `constraints` has and that already caused one real
+bug in this codebase (Klaf.jsx / KlafConstraints.jsx having to match both
+shapes). `pluga = null` means a global grant (used for `playbox_orders`).
+See `src/lib/permissions.js` for the exact helpers (`hasPermission`,
+`hasAnyPermission`, `plugotFor`) and
+`supabase/migrations/0005_delegated_permissions.sql` for the schema/RLS.
+
+Nav visibility follows the same permissions: `/playbox` only appears for a
+`playbox_orders` holder, and `/klaf` becomes reachable for a `meal_regulators`
+holder even outside the קלפ role (see `src/components/TopNav.jsx`'s
+`extraPermissionKey` and `src/components/AppLayout.jsx`'s route guard, which
+both check `user_permissions` in addition to role).
+
 ## Adding real email later
 
 When you're ready, pick a provider (Resend is the easiest to wire into a
@@ -196,12 +278,26 @@ preview switcher right below to click through the app as any pluga's klaf.
 Scope: pre-seeded with realistic data are the 6 original features (Klaf, the
 daily schedule/constraints, Tasks, the TopNav badge, event confirmations),
 plus פערים/gaps (every status/priority, a couple of stale ones, one with a
-full update/comment history) and משיכות ציוד/equipment (items across all 3
+full update/comment history), משיכות ציוד/equipment (items across all 3
 warehouses, one overdue holding, one open-ended holding, and pending/
-approved/rejected withdrawal requests). Pages built on anything else
-(סטטיסטיקה, and the "בקשות גישה"/"משתמשים" tabs in the admin menu) will show
-empty while test mode is on — expected, not a bug, since test mode never
-opens a real Supabase session and those aren't backed by fixtures.
+approved/rejected withdrawal requests), and delegated permissions — the test
+profile is pre-granted all 3 permission keys (frisa_pina for two plugot,
+playbox_orders globally, meal_regulators for one pluga), so Klaf.jsx's
+meal-regulators section and `/playbox` both have something to show out of
+the box. Four more events are seeded with `food_pickup_needed: true`, timed
+to land in each of the four food-pickup reminder states (upcoming, reminder,
+urgent, overdue) so that styling is visible on the Klaf page too without
+waiting for real time to pass.
+
+The **"משתמשים" tab in the admin menu is also seeded** — 8 fake users across
+every role and pluga (`src/testdata/fixtures.js`'s `profiles` array), a
+couple of them already holding a permission or two (דנה לוי has frisa_pina
+for two plugot at once, for example), the rest with none — so you can expand
+"הרשאות מיוחדות" for any of them and try the granting UI itself, not just
+the pages that consume it. The signed-in fake admin's own profile (from
+`buildProfile()`) is separate from this list and always stays the same
+regardless of what you do here. Only the "בקשות גישה" tab still shows empty
+— access requests aren't part of this fixture set.
 
 ### Alternative: SQL scripts against the real project
 
