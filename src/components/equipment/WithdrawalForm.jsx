@@ -77,16 +77,17 @@ export default function WithdrawalForm({ open, onClose, warehouse, items, userPl
       .filter(Boolean);
 
   // Creates a playbox_orders row (auto_generated: true) per shortage that
-  // doesn't already have one pending, attributed to the withdrawing pluga —
-  // playbox_orders always needs one (see 0001_init.sql), and this is a
-  // shared warehouse shortage rather than any one pluga's own supply, so the
-  // pluga making the withdrawal that surfaced it is the most reasonable
-  // owner. Dedup is by item name alone (not pluga+item, unlike the
-  // pluga-level gap orders in Playbox.jsx) since the physical stock being
-  // replenished is shared — an auto order already pending for this item from
-  // ANY pluga covers the same shortage. Returns the text of what was
-  // actually created, or null if everything was already covered by an
-  // existing pending/ordered auto order.
+  // doesn't already have one pending. playbox_orders no longer needs a pluga
+  // at all (see supabase/migrations/0013_playbox_orders_optional_pluga.sql)
+  // — this is a shared-warehouse shortage, not any one pluga's own supply,
+  // so the order itself doesn't name one; forPluga is used only for the
+  // "here's what got created" message shown to whoever triggered it, below.
+  // Dedup is by item name alone (not pluga+item, unlike the pluga-level gap
+  // orders in Playbox.jsx) since the physical stock being replenished is
+  // shared — an auto order already pending for this item from ANY pluga
+  // covers the same shortage. Returns the text of what was actually
+  // created, or null if everything was already covered by an existing
+  // pending/ordered auto order.
   const createAutoOrders = async (shortageList, forPluga) => {
     try {
       const existingOrders = await base44.entities.PlayboxOrder.list("-order_date", 500);
@@ -99,7 +100,6 @@ export default function WithdrawalForm({ open, onClose, warehouse, items, userPl
       for (const s of shortageList) {
         if (hasPendingAuto(s.name)) continue;
         await base44.entities.PlayboxOrder.create({
-          pluga: forPluga,
           order_date: today,
           item: s.name,
           quantity: s.shortfall,

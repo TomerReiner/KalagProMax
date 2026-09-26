@@ -27,9 +27,11 @@ const STATUS_BADGE_STYLE = {
 
 // One order as a single plain-text line, ready to paste anywhere (WhatsApp,
 // an email, ...). Used both for the per-order copy button below and, joined
-// into a bulleted block, for the "copy all pending" button.
+// into a bulleted block, for the "copy all pending" button. pluga is
+// optional now (see supabase/migrations/0013_playbox_orders_optional_pluga.sql)
+// — most orders won't have one — so it's only included when set.
 function formatOneOrderAsText(order) {
-  return `${order.item} × ${order.quantity} (${order.pluga})${order.notes ? ` - ${order.notes}` : ""}`;
+  return `${order.item} × ${order.quantity}${order.pluga ? ` (${order.pluga})` : ""}${order.notes ? ` - ${order.notes}` : ""}`;
 }
 
 // Formats several orders as one plain-text block. Used both here (all
@@ -116,7 +118,9 @@ function PlayboxOrders() {
   const { toast } = useToast();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ pluga: PLUGOT[0], order_date: toDateStr(new Date()), item: "", quantity: 1, notes: "" });
+  // No pluga here — an order is relevant to everyone, not tagged to a
+  // specific pluga (see supabase/migrations/0013_playbox_orders_optional_pluga.sql).
+  const [form, setForm] = useState({ order_date: toDateStr(new Date()), item: "", quantity: 1, notes: "" });
   const [saving, setSaving] = useState(false);
   // Order awaiting a destination-warehouse choice before it's actually
   // marked "התקבל" — see handleChooseDestination / the dialog at the bottom
@@ -145,7 +149,6 @@ function PlayboxOrders() {
     setSaving(true);
     try {
       await base44.entities.PlayboxOrder.create({
-        pluga: form.pluga,
         order_date: form.order_date,
         item: form.item.trim(),
         quantity: Number(form.quantity) || 1,
@@ -255,22 +258,7 @@ function PlayboxOrders() {
     <div className="space-y-4 pt-2">
       <div className="border rounded-lg p-3 bg-white space-y-2">
         <p className="text-sm font-medium">הוספת בקשת הזמנה</p>
-        <div className="grid grid-cols-2 gap-2">
-          <Select value={form.pluga} onValueChange={(v) => setForm((f) => ({ ...f, pluga: v }))}>
-            <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {PLUGOT.map((p) => (
-                <SelectItem key={p} value={p}>
-                  <span className="flex items-center gap-2">
-                    <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p]?.dot)} />
-                    {p}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input type="date" value={form.order_date} onChange={(e) => setForm((f) => ({ ...f, order_date: e.target.value }))} className="h-9 text-sm" />
-        </div>
+        <Input type="date" value={form.order_date} onChange={(e) => setForm((f) => ({ ...f, order_date: e.target.value }))} className="h-9 text-sm" />
         <Input placeholder="פריט" value={form.item} onChange={(e) => setForm((f) => ({ ...f, item: e.target.value }))} className="h-9 text-sm" />
         <div className="grid grid-cols-[100px_1fr] gap-2">
           <Input type="number" min="1" value={form.quantity} onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))} className="h-9 text-sm" />
@@ -303,7 +291,14 @@ function PlayboxOrders() {
             <div key={o.id} className="border rounded-lg p-3 bg-white flex items-start justify-between gap-2 flex-wrap">
               <div className="min-w-0 space-y-0.5">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", PLUGA_COLORS[o.pluga]?.light)}>{o.pluga}</span>
+                  {/* Most orders have no pluga at all now (see
+                      supabase/migrations/0013_playbox_orders_optional_pluga.sql)
+                      — this only ever fires for the pluga-level "מלאי ומעקב
+                      חוסרים" auto-generated orders below, which still track
+                      one. */}
+                  {o.pluga && (
+                    <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", PLUGA_COLORS[o.pluga]?.light)}>{o.pluga}</span>
+                  )}
                   <span className="text-sm font-medium">{o.item} × {o.quantity}</span>
                   {o.auto_generated && (
                     <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700 flex items-center gap-1">
@@ -357,7 +352,7 @@ function PlayboxOrders() {
           {receivingOrder && (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                "{receivingOrder.item}" × {receivingOrder.quantity} ({receivingOrder.pluga}) — לאיזה מחסן זה מגיע?
+                "{receivingOrder.item}" × {receivingOrder.quantity}{receivingOrder.pluga ? ` (${receivingOrder.pluga})` : ""} — לאיזה מחסן זה מגיע?
               </p>
               <div className="space-y-2">
                 {WAREHOUSES.map((w) => (

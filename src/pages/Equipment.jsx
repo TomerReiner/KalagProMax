@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Package, Plus, History, Settings, Pencil, Trash2, Bell, BellRing, Download } from "lucide-react";
+import { Loader2, Package, Plus, History, Settings, Pencil, Trash2, Bell, BellRing, Download, PackageSearch } from "lucide-react";
 import * as XLSX from "xlsx";
 import { cn } from "@/lib/utils";
 import { usePreviewRole } from "@/lib/previewRoleContext";
@@ -14,7 +14,7 @@ import EquipmentSettingsDialog from "@/components/equipment/EquipmentSettingsDia
 import PendingWithdrawals from "@/components/equipment/PendingWithdrawals";
 import MyWithdrawalRequests from "@/components/equipment/MyWithdrawalRequests";
 import ReturnConfirmDialog from "@/components/equipment/ReturnConfirmDialog";
-import { WAREHOUSES } from "@/lib/constants";
+import { WAREHOUSES, toDateStr } from "@/lib/constants";
 import { hasPermission, effectivePermissions } from "@/lib/permissions";
 
 export default function Equipment() {
@@ -35,6 +35,7 @@ export default function Equipment() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [returnTarget, setReturnTarget] = useState(null);
   const [returnSaving, setReturnSaving] = useState(false);
+  const [generatingOrders, setGeneratingOrders] = useState(false);
 
   const loadData = useCallback(async () => {
     const [settingsData, itemsData, holdingsData] = await Promise.all([
@@ -97,6 +98,11 @@ export default function Equipment() {
   }
 
   const warehouseItems = items.filter((i) => i.warehouse === activeWarehouse);
+  // Across every warehouse, not just activeWarehouse — the shortage-orders
+  // button above acts on all of them at once.
+  const shortageCount = items.filter(
+    (i) => Number(i.target_quantity) > 0 && Number(i.quantity) < Number(i.target_quantity)
+  ).length;
 
   const handleItemSubmit = async (data) => {
     if (editingItem) {
@@ -142,6 +148,55 @@ export default function Equipment() {
       toast({ variant: "destructive", title: "שגיאה", description: err.message });
     } finally {
       setReturnSaving(false);
+    }
+  };
+
+  // "צור הזמנות בפלייבוקס לכל החוסרים" — same idea as Playbox.jsx's own
+  // per-pluga "צור הזמנות לחוסרים" (0008_playbox_stock_tracking.sql), but for
+  // warehouse_items.target_quantity shortages (0012_warehouse_item_target_quantity.sql)
+  // across every warehouse, not just the shortfall WithdrawalForm.jsx detects
+  // inline for whatever's actually being withdrawn right now. Only visible
+  // to canSetTargets, same permission that can set a target in the first
+  // place. Dedup is by item name alone, matching WithdrawalForm.jsx's own
+  // shortage-to-order flow: an auto order already pending for this item from
+  // anywhere already covers this shared-warehouse shortage, regardless of
+  // which warehouse it was found short in.
+  const handleGenerateShortageOrders = async () => {
+    setGeneratingOrders(true);
+    try {
+      const shortages = items.filter(
+        (it) => Number(it.target_quantity) > 0 && Number(it.quantity) < Number(it.target_quantity)
+      );
+      if (shortages.length === 0) {
+        toast({ title: "אין חוסרים כרגע", duration: 2000 });
+        return;
+      }
+      const existingOrders = await base44.entities.PlayboxOrder.list("-order_date", 500);
+      const hasPendingAuto = (name) =>
+        existingOrders.some((o) => o.item === name && o.auto_generated && (o.status === "ממתין" || o.status === "הוזמן"));
+      const today = toDateStr(new Date());
+      let created = 0;
+      for (const it of shortages) {
+        if (hasPendingAuto(it.name)) continue;
+        await base44.entities.PlayboxOrder.create({
+          order_date: today,
+          item: it.name,
+          quantity: Number(it.target_quantity) - Number(it.quantity),
+          notes: "נוצר אוטומטית ממעקב חוסרי מחסן",
+          status: "ממתין",
+          auto_generated: true,
+        });
+        created += 1;
+      }
+      if (created === 0) {
+        toast({ title: "כל החוסרים כבר הוזמנו", description: "יש הזמנה אוטומטית ממתינה לכל חוסר קיים", duration: 2500 });
+      } else {
+        toast({ title: `נוצרו ${created} הזמנות לחוסרים`, description: "אפשר לראות ולהזמין בפועל בעמוד הפלייבוקס", duration: 3000 });
+      }
+    } catch (err) {
+      toast({ variant: "destructive", title: "שגיאה ביצירת הזמנות", description: err.message });
+    } finally {
+      setGeneratingOrders(false);
     }
   };
 
@@ -261,6 +316,18 @@ export default function Equipment() {
       </div>
 
       {canEdit && <PendingWithdrawals onDecision={loadData} />}
+
+      {canSetTargets && (
+        <Button
+          onClick={handleGenerateShortageOrders}
+          disabled={generatingOrders}
+          className="w-full gap-1.5"
+          variant={shortageCount > 0 ? "default" : "outline"}
+        >
+          {generatingOrders ? <Loader2 className="w-4 h-4 animate-spin" /> : <PackageSearch className="w-4 h-4" />}
+          צור הזמנות בפלייבוקס לכל החוסרים{shortageCount > 0 ? ` (${shortageCount})` : ""}
+        </Button>
+      )}
 
       <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
         {WAREHOUSES.map((w) => (

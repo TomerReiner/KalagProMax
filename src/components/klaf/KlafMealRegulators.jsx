@@ -10,10 +10,14 @@ const EMPTY_FORM = { name: "", phone: "" };
 
 // Klaf page section for the meal_regulators delegated permission (see
 // src/lib/permissions.js) — 2-3 named regulators per pluga, per meal, per
-// day, each with an optional phone number (tap-to-call). `pluga` and
-// `dateStr` come from the page it's embedded in (the viewed pluga / selected
-// day) rather than owning its own pickers, so it stays in sync with
-// whatever day the rest of the Klaf page is showing.
+// day, each with an optional phone number (tap-to-call), plus one entry_time
+// per pluga+meal+day (see supabase/migrations/0014_meal_regulator_entry_time.sql)
+// for what time this pluga is due in — lunch in particular has each pluga
+// entering at a different time to spread out the line, and this is where
+// that time gets set. `pluga` and `dateStr` come from the page it's embedded
+// in (the viewed pluga / selected day) rather than owning its own pickers,
+// so it stays in sync with whatever day the rest of the Klaf page is
+// showing.
 export default function KlafMealRegulators({ pluga, dateStr }) {
   const { toast } = useToast();
   const [rows, setRows] = useState([]);
@@ -45,6 +49,23 @@ export default function KlafMealRegulators({ pluga, dateStr }) {
         await base44.entities.MealRegulator.update(existing.id, { regulators });
       } else {
         await base44.entities.MealRegulator.create({ pluga, meal_date: dateStr, meal_type: mealType, regulators });
+      }
+      await load();
+    } catch (err) {
+      toast({ title: "שגיאה בשמירה", description: err.message, variant: "destructive" });
+    }
+  };
+
+  // Same upsert shape as saveRegulators, but for the row's entry_time
+  // instead of its regulators array — the two are edited independently
+  // (a time can be set with no regulators named yet, or vice versa).
+  const saveEntryTime = async (mealType, entry_time) => {
+    try {
+      const existing = rowFor(mealType);
+      if (existing) {
+        await base44.entities.MealRegulator.update(existing.id, { entry_time });
+      } else {
+        await base44.entities.MealRegulator.create({ pluga, meal_date: dateStr, meal_type: mealType, regulators: [], entry_time });
       }
       await load();
     } catch (err) {
@@ -85,9 +106,24 @@ export default function KlafMealRegulators({ pluga, dateStr }) {
           {MEAL_TYPES.map((mealType) => {
             const regulators = regulatorsFor(mealType);
             const entry = newEntry[mealType] || EMPTY_FORM;
+            const row = rowFor(mealType);
             return (
               <div key={mealType} className="border rounded-xl p-3 bg-white space-y-2">
-                <p className="text-sm font-medium">{mealType}</p>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <p className="text-sm font-medium">{mealType}</p>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-muted-foreground">שעת כניסה</span>
+                    <Input
+                      type="time"
+                      defaultValue={row?.entry_time || ""}
+                      onBlur={(e) => {
+                        const value = e.target.value || null;
+                        if (value !== (row?.entry_time || null)) saveEntryTime(mealType, value);
+                      }}
+                      className="h-8 text-sm w-[110px]"
+                    />
+                  </div>
+                </div>
                 <div className="space-y-1.5">
                   {regulators.length === 0 && <p className="text-xs text-muted-foreground">לא נקבעו מווסתים</p>}
                   {regulators.map((r, i) => (

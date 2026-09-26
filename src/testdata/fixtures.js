@@ -317,6 +317,10 @@ export function buildFixtures() {
   ];
 
   const playbox_orders = [
+    // הזמנה כללית ללא שיוך לפלוגה — ההזמנה הרגילה כיום (ר'
+    // supabase/migrations/0013_playbox_orders_optional_pluga.sql): פלייבוקס
+    // לא מתחלק לפי פלוגות, אז אין צורך לתייג הזמנה לפלוגה ספציפית.
+    { id: "81000000-0000-4000-8000-000000000006", pluga: null, order_date: dateStr(D0), item: "נייר טואלט", quantity: 20, notes: null, status: "ממתין", auto_generated: false, destination_warehouse: null, ...stamp },
     { id: "81000000-0000-4000-8000-000000000001", pluga: "פארן", order_date: dateStr(D1), item: "חטיפים", quantity: 10, notes: null, status: "ממתין", auto_generated: false, destination_warehouse: null, ...stamp },
     { id: "81000000-0000-4000-8000-000000000002", pluga: "בשור", order_date: dateStr(D2), item: "שתייה קלה", quantity: 24, notes: "לאירוע יום שלישי", status: "הוזמן", auto_generated: false, destination_warehouse: null, ...stamp },
     { id: "81000000-0000-4000-8000-000000000003", pluga: "צין", order_date: dateStr(D0), item: "עוגות", quantity: 3, notes: null, status: "בוטל", auto_generated: false, destination_warehouse: null, ...stamp },
@@ -341,8 +345,11 @@ export function buildFixtures() {
   ];
 
   const meal_regulators = [
-    { id: "82000000-0000-4000-8000-000000000001", pluga: "פארן", meal_date: dateStr(D0), meal_type: "צהריים", regulators: [{ name: "רב\"ט כהן", phone: "0521234567" }, { name: "טוראי לוי", phone: null }], ...stamp },
-    { id: "82000000-0000-4000-8000-000000000002", pluga: "פארן", meal_date: dateStr(D0), meal_type: "ערב", regulators: [{ name: "סמל מזרחי", phone: "0529876543" }, { name: "טוראי אבו", phone: null }, { name: "רב\"ט דוד", phone: "0541112233" }], ...stamp },
+    // entry_time (supabase/migrations/0014_meal_regulator_entry_time.sql) —
+    // lunch has פארן entering at 12:15; dinner has no time set yet, to also
+    // demo the "not set" state.
+    { id: "82000000-0000-4000-8000-000000000001", pluga: "פארן", meal_date: dateStr(D0), meal_type: "צהריים", regulators: [{ name: "רב\"ט כהן", phone: "0521234567" }, { name: "טוראי לוי", phone: null }], entry_time: "12:15", ...stamp },
+    { id: "82000000-0000-4000-8000-000000000002", pluga: "פארן", meal_date: dateStr(D0), meal_type: "ערב", regulators: [{ name: "סמל מזרחי", phone: "0529876543" }, { name: "טוראי אבו", phone: null }, { name: "רב\"ט דוד", phone: "0541112233" }], entry_time: null, ...stamp },
   ];
 
   return {

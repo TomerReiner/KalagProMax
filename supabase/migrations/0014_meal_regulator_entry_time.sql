@@ -1,0 +1,12 @@
+-- Lunch ("צהריים") has each pluga entering the dining hall at a different
+-- scheduled time to spread out the queue, so alongside naming who the
+-- regulators are for a given pluga+meal+day
+-- (0007_meal_regulator_phones.sql's `regulators` jsonb array), let whoever
+-- holds that row also record what time this pluga is due in for that meal.
+--
+-- One value per meal_regulators row (i.e. per pluga+meal_date+meal_type,
+-- not per named regulator) — it's the pluga's entry time, not any one
+-- person's. Stored as free-form "HH:MM" text rather than a native time
+-- type, matching every other time field in this schema (see
+-- events/direct_tasks.start_time in 0001_init.sql).
+alter table public.meal_regulators add column if not exists entry_time text;
