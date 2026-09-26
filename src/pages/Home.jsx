@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Plus, Loader2, HardHat, Download } from "lucide-react";
+import { Plus, Loader2, HardHat, Download, LayoutGrid, List } from "lucide-react";
 import * as XLSX from "xlsx";
 import GapCard, { PRIORITY_RANK, daysSince } from "@/components/gaps/GapCard";
+import GapBoard from "@/components/gaps/GapBoard";
 import GapForm from "@/components/gaps/GapForm";
 import GapFilters from "@/components/gaps/GapFilters";
 import GapDetail from "@/components/gaps/GapDetail";
@@ -34,7 +35,10 @@ export default function Home() {
   const [sort, setSort] = useState("priority");
   const [staleOnly, setStaleOnly] = useState(false);
   const [staleDays, setStaleDays] = useState(7);
-  const [viewMode, setViewMode] = useState("active");
+  const [archiveView, setArchiveView] = useState("active");
+  // "board" = Jira-style columns by status (the new default); "list" = the
+  // original card-list view, kept as an alternative.
+  const [layoutMode, setLayoutMode] = useState("board");
   const [detailGap, setDetailGap] = useState(null);
   const [user, setUser] = useState(null);
 
@@ -63,8 +67,15 @@ export default function Home() {
 
   const filtered = useMemo(() => {
     let list = gaps.filter((g) => {
-      if (viewMode === "active" && g.status === "טופל") return false;
-      if (viewMode === "archive" && g.status !== "טופל") return false;
+      // The active/archive split only applies to the list view. The board
+      // shows every status as its own column at once (that's the point of a
+      // kanban board — "טופל" is just the rightmost/last column, not hidden
+      // away), so applying it there would just make the "טופל" column look
+      // permanently empty for no reason.
+      if (layoutMode === "list") {
+        if (archiveView === "active" && g.status === "טופל") return false;
+        if (archiveView === "archive" && g.status !== "טופל") return false;
+      }
       if (statusFilters.length > 0 && !statusFilters.includes(g.status)) return false;
       if (priorityFilters.length > 0 && !priorityFilters.includes(g.priority)) return false;
       if (companyFilter !== "all" && g.company !== companyFilter) return false;
@@ -98,7 +109,7 @@ export default function Home() {
       }
     });
     return list;
-  }, [gaps, statusFilters, priorityFilters, companyFilter, staleOnly, staleDays, search, sort, viewMode]);
+  }, [gaps, statusFilters, priorityFilters, companyFilter, staleOnly, staleDays, search, sort, layoutMode, archiveView]);
 
   const stats = useMemo(() => {
     const byStatus = { "טרם הועלה": 0, "בטיפול": 0, "טופל": 0 };
@@ -149,6 +160,22 @@ export default function Home() {
       author_name: user?.full_name || user?.email || "משתמש",
     });
     await loadGaps();
+  };
+
+  const handleBoardDragEnd = async (gapId, fromStatus, toStatus) => {
+    if (fromStatus === toStatus) return;
+    const gap = gaps.find((g) => g.id === gapId);
+    if (!gap) return;
+    // Optimistic UI: move the card to its new column immediately instead of
+    // waiting for the round-trip, otherwise the drag would visibly snap back
+    // to the old column for a moment before the reload lands it correctly.
+    setGaps((prev) => prev.map((g) => (g.id === gapId ? { ...g, status: toStatus } : g)));
+    try {
+      await handleStatusChange(gap, toStatus);
+    } catch (err) {
+      setGaps((prev) => prev.map((g) => (g.id === gapId ? { ...g, status: fromStatus } : g)));
+      window.alert("שגיאה בעדכון סטטוס הפער: " + (err?.message || "שגיאה לא ידועה"));
+    }
   };
 
   const handleDelete = async () => {
@@ -235,26 +262,54 @@ export default function Home() {
           <StatCard label="טופל" value={stats["טופל"]} tone="emerald" />
         </div>
 
-        {/* View mode toggle */}
-        <div className="flex items-center gap-2 bg-slate-100 rounded-lg p-1 max-w-xs">
-          <button
-            onClick={() => setViewMode("active")}
-            className={cn(
-              "flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors",
-              viewMode === "active" ? "bg-white text-slate-900 shadow-sm" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            פעילים
-          </button>
-          <button
-            onClick={() => setViewMode("archive")}
-            className={cn(
-              "flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors",
-              viewMode === "archive" ? "bg-white text-slate-900 shadow-sm" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            ארכיון
-          </button>
+        {/* View toggles: board (Jira-style, default) vs list, and — only for
+            the list — active vs archive. */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 bg-slate-100 rounded-lg p-1">
+            <button
+              onClick={() => setLayoutMode("board")}
+              className={cn(
+                "flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+                layoutMode === "board" ? "bg-white text-slate-900 shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <LayoutGrid className="w-4 h-4" />
+              לוח
+            </button>
+            <button
+              onClick={() => setLayoutMode("list")}
+              className={cn(
+                "flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+                layoutMode === "list" ? "bg-white text-slate-900 shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <List className="w-4 h-4" />
+              רשימה
+            </button>
+          </div>
+
+          {layoutMode === "list" && (
+            <div className="flex items-center gap-2 bg-slate-100 rounded-lg p-1 max-w-xs">
+              <button
+                onClick={() => setArchiveView("active")}
+                className={cn(
+                  "flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+                  archiveView === "active" ? "bg-white text-slate-900 shadow-sm" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                פעילים
+              </button>
+              <button
+                onClick={() => setArchiveView("archive")}
+                className={cn(
+                  "flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+                  archiveView === "archive" ? "bg-white text-slate-900 shadow-sm" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                ארכיון
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Filters */}
@@ -276,18 +331,27 @@ export default function Home() {
           setStaleDays={setStaleDays}
         />
 
-        {/* List */}
+        {/* Board / List */}
         {loading ? (
           <div className="flex justify-center py-20">
             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           </div>
+        ) : layoutMode === "board" ? (
+          <GapBoard
+            gaps={filtered}
+            onDragEnd={handleBoardDragEnd}
+            onEdit={openEdit}
+            onDelete={setDeleting}
+            onClick={setDetailGap}
+            staleDays={staleDays}
+          />
         ) : filtered.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
             <p className="text-lg font-medium">
-              {viewMode === "archive" ? "אין פערים בארכיון" : "אין פערים להצגה"}
+              {archiveView === "archive" ? "אין פערים בארכיון" : "אין פערים להצגה"}
             </p>
             <p className="text-sm mt-1">
-              {viewMode === "archive" ? "פערים שיטופלו יופיעו כאן." : "שנה את הסננים או הוסף פער חדש."}
+              {archiveView === "archive" ? "פערים שיטופלו יופיעו כאן." : "שנה את הסננים או הוסף פער חדש."}
             </p>
           </div>
         ) : (

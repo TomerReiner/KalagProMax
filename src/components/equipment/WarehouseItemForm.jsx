@@ -5,16 +5,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
-export default function WarehouseItemForm({ open, onClose, onSubmit, warehouse, editingItem }) {
-  const [form, setForm] = useState({ name: "", quantity: 0, returnable: false });
+export default function WarehouseItemForm({ open, onClose, onSubmit, warehouse, editingItem, canSetTarget }) {
+  const [form, setForm] = useState({ name: "", quantity: 0, returnable: false, target_quantity: 0 });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
       setForm(
         editingItem
-          ? { name: editingItem.name, quantity: editingItem.quantity, returnable: editingItem.returnable || false }
-          : { name: "", quantity: 0, returnable: false }
+          ? {
+              name: editingItem.name,
+              quantity: editingItem.quantity,
+              returnable: editingItem.returnable || false,
+              target_quantity: editingItem.target_quantity || 0,
+            }
+          : { name: "", quantity: 0, returnable: false, target_quantity: 0 }
       );
     }
   }, [open, editingItem]);
@@ -24,7 +29,13 @@ export default function WarehouseItemForm({ open, onClose, onSubmit, warehouse, 
     if (!form.name) return;
     setSaving(true);
     try {
-      await onSubmit({ ...form, warehouse });
+      // Only send target_quantity when this user is actually allowed to set
+      // it (canSetTarget) — otherwise a regular קלפ editing just the name or
+      // quantity would silently overwrite whatever target someone else
+      // already configured, since it isn't in their form state to begin with.
+      const { target_quantity, ...rest } = form;
+      const payload = canSetTarget ? { ...rest, target_quantity, warehouse } : { ...rest, warehouse };
+      await onSubmit(payload);
       onClose();
     } finally {
       setSaving(false);
@@ -65,6 +76,20 @@ export default function WarehouseItemForm({ open, onClose, onSubmit, warehouse, 
             />
             <Label htmlFor="returnable">ציוד שצריך להחזיר למחסן</Label>
           </div>
+          {canSetTarget && (
+            <div className="space-y-2">
+              <Label>כמות יעד (אופציונלי)</Label>
+              <Input
+                type="number"
+                min="0"
+                value={form.target_quantity}
+                onChange={(e) => setForm({ ...form, target_quantity: Number(e.target.value) })}
+              />
+              <p className="text-xs text-muted-foreground">
+                כשמשיכת ציוד תוריד את הכמות מתחת ליעד הזה, המערכת תציע ליצור בקשת הזמנה אוטומטית מהפלייבוקס להשלמה.
+              </p>
+            </div>
+          )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
               ביטול

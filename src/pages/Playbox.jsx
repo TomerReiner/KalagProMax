@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Truck, Plus, Trash2, Shield, PackageSearch, Sparkles, PackageCheck, Warehouse } from "lucide-react";
+import { Loader2, Truck, Plus, Trash2, Shield, PackageSearch, Sparkles, PackageCheck, Warehouse, Copy } from "lucide-react";
 import { PLUGOT, PLUGA_COLORS, WAREHOUSES, toDateStr } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
@@ -24,6 +24,16 @@ const STATUS_BADGE_STYLE = {
   "התקבל": "bg-green-100 text-green-700",
   "בוטל": "bg-red-100 text-red-600",
 };
+
+// Formats the pending orders as one plain-text block, ready to paste
+// anywhere (WhatsApp, an email, ...). Used both here (all pending orders at
+// once) and by WithdrawalForm.jsx (just the completion order(s) it created)
+// — same convention, kept in sync manually since there's no shared
+// UI-utility module yet for the two pages to import from.
+function formatOrdersAsText(orders) {
+  const lines = orders.map((o) => `• ${o.item} × ${o.quantity} (${o.pluga})${o.notes ? ` - ${o.notes}` : ""}`);
+  return `הזמנות פלייבוקס ממתינות (${orders.length}):\n${lines.join("\n")}`;
+}
 
 // Standalone page for the playbox_orders delegated permission (see
 // src/lib/permissions.js and supabase/migrations/0005_delegated_permissions.sql).
@@ -216,6 +226,20 @@ function PlayboxOrders() {
     }
   };
 
+  // Only "ממתין" — these are the ones nobody has actually placed on
+  // Playbox's site yet, which is the whole reason to relay the list; an
+  // already-"הוזמן" order doesn't need re-sharing.
+  const pendingOrders = orders.filter((o) => o.status === "ממתין");
+
+  const handleCopyAllPending = () => {
+    if (pendingOrders.length === 0) {
+      toast({ title: "אין הזמנות ממתינות להעתקה", duration: 2000 });
+      return;
+    }
+    navigator.clipboard?.writeText(formatOrdersAsText(pendingOrders));
+    toast({ title: "הטקסט הועתק", duration: 1500 });
+  };
+
   return (
     <div className="space-y-4 pt-2">
       <div className="border rounded-lg p-3 bg-white space-y-2">
@@ -246,6 +270,17 @@ function PlayboxOrders() {
           הוסף
         </Button>
       </div>
+
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={handleCopyAllPending}
+        className="w-full gap-1.5"
+        disabled={pendingOrders.length === 0}
+      >
+        <Copy className="w-3.5 h-3.5" />
+        העתק הזמנות ממתינות כטקסט{pendingOrders.length > 0 ? ` (${pendingOrders.length})` : ""}
+      </Button>
 
       {loading ? (
         <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>

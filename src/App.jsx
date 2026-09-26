@@ -33,8 +33,10 @@ import Playbox from '@/pages/Playbox';
 // combined grab-bag tab wasn't wanted, so each capability now lives where it
 // naturally fits instead: frisa_pina and meal_regulators fold into Klaf.jsx,
 // and playbox_orders gets its own focused page/route (see Playbox.jsx /
-// /playbox above). Equipment withdrawal delegation (equipment_manager) was
-// already its own thing on profiles before this feature existed.
+// /playbox above). Equipment withdrawal delegation (equipment_manager) lives
+// in Equipment.jsx's own canEdit check — it started as a separate flag on
+// profiles that predated this feature, and is now one of these permission
+// keys too (see src/lib/permissions.js).
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();

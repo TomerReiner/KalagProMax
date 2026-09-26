@@ -231,8 +231,12 @@ export function buildFixtures() {
   // ---------------------------------------------------------------------
   const warehouse_items = [
     { id: "60000000-0000-4000-8000-000000000001", warehouse: "מכולה", name: "כיסאות מתקפלים", quantity: 80, returnable: false, ...stamp },
-    { id: "60000000-0000-4000-8000-000000000002", warehouse: "מכולה", name: "שולחנות מתקפלים", quantity: 15, returnable: false, ...stamp },
-    { id: "60000000-0000-4000-8000-000000000003", warehouse: "מכולה", name: "אוהלים", quantity: 6, returnable: true, ...stamp },
+    { id: "60000000-0000-4000-8000-000000000002", warehouse: "מכולה", name: "שולחנות מתקפלים", quantity: 15, returnable: false, target_quantity: 20, ...stamp },
+    // target_quantity: 10 with only 6 on hand demonstrates the
+    // withdrawal-time shortage suggestion (see
+    // supabase/migrations/0012_warehouse_item_target_quantity.sql) right
+    // away — withdrawing even one tent triggers it.
+    { id: "60000000-0000-4000-8000-000000000003", warehouse: "מכולה", name: "אוהלים", quantity: 6, returnable: true, target_quantity: 10, ...stamp },
     { id: "60000000-0000-4000-8000-000000000004", warehouse: "מחסן קרביץ", name: "אפודי קרביץ", quantity: 45, returnable: true, ...stamp },
     { id: "60000000-0000-4000-8000-000000000005", warehouse: "מחסן קרביץ", name: "קסדות", quantity: 40, returnable: true, ...stamp },
     { id: "60000000-0000-4000-8000-000000000006", warehouse: "מחסן קרביץ", name: "רתמות", quantity: 25, returnable: true, ...stamp },

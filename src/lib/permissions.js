@@ -8,12 +8,17 @@
 // frisa_pina for both פארן and בשור), never by an array column. `scoped:
 // false` permissions are global and stored with pluga = null.
 //
-// Equipment withdrawal ("משיכת ציוד") is intentionally NOT one of the keys
-// here: it already has its own personal-flag column, profiles
-// .equipment_manager, which predates this table and already does exactly
-// what this table does (a personal flag, independent of role). It's kept as
-// its own column rather than folded in here to avoid touching working code;
-// the AdminPanel UI just displays it in the same section as these.
+// Equipment withdrawal ("משיכת ציוד") USED to be its own personal-flag
+// column, profiles.equipment_manager, kept separate from this table to avoid
+// touching working code — it was already doing exactly what this table does
+// (a personal flag, independent of role), just via its own column instead of
+// a user_permissions row. It's now folded in as the "equipment_manager" key
+// below, so it lives in the same "הרשאות מיוחדות" section/UI as every other
+// delegated permission instead of its own separate toggle. See
+// supabase/migrations/0011_equipment_manager_permission.sql for the
+// one-time backfill from the old column into user_permissions rows — the
+// profiles.equipment_manager column itself is left in place (unused by the
+// app from here on) rather than dropped, in case anything else still reads it.
 //
 // "משיכת מזון לנסיעות" is NOT a permission here either — it turned out not
 // to need one. It's a checkbox on the event itself (events
@@ -27,6 +32,8 @@
 //    viewer is authorized for (see effectivePermissions below for how an
 //    admin ends up authorized for all of them without an explicit grant).
 //  - playbox_orders: its own page, src/pages/Playbox.jsx (/playbox route).
+//  - equipment_manager: src/pages/Equipment.jsx's canEdit check (gates
+//    editing warehouse items and managing withdrawal requests, org-wide).
 
 import { PLUGOT } from "./constants";
 
@@ -48,6 +55,12 @@ export const PERMISSIONS = {
     label: "ניהול מווסתים לארוחות",
     description: "לערוך את רשימת המווסתים לצהריים/ערב עבור הפלוגות שנבחרו",
     scoped: true,
+  },
+  equipment_manager: {
+    key: "equipment_manager",
+    label: "אחראי משיכות ציוד",
+    description: "לערוך פריטי מחסן ולנהל בקשות משיכת ציוד עבור כל הפלוגות (כמו האחראי שהוגדר בהגדרות הציוד)",
+    scoped: false,
   },
 };
 

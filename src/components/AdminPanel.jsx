@@ -163,20 +163,6 @@ export default function AdminPanel() {
     }
   };
 
-  const handleToggleEquipmentManager = async (userId, value) => {
-    setUpdatingUser(userId);
-    try {
-      await base44.entities.User.update(userId, { equipment_manager: value });
-      await loadUsers();
-      toast({ title: value ? "סומן כאחראי משיכות ציוד" : "הוסר מאחראי משיכות ציוד", duration: 3000 });
-    } catch (err) {
-      console.error(err);
-      toast({ title: "שגיאה בעדכון", description: err.message, variant: "destructive" });
-    } finally {
-      setUpdatingUser(null);
-    }
-  };
-
   const permsFor = (userId) => permissions.filter((p) => p.user_id === userId);
 
   // pluga === null toggles a global grant (playbox_orders); otherwise a
@@ -477,15 +463,6 @@ export default function AdminPanel() {
                       </Select>
                     </div>
                   )}
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-xs text-muted-foreground">אחראי משיכות ציוד</span>
-                    <Switch
-                      checked={!!u.equipment_manager}
-                      onCheckedChange={(v) => handleToggleEquipmentManager(u.id, v)}
-                      disabled={updatingUser === u.id}
-                    />
-                  </div>
-
                   <button
                     type="button"
                     onClick={() => setExpandedUser((cur) => (cur === u.id ? null : u.id))}

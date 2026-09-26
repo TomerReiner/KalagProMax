@@ -15,6 +15,7 @@ import PendingWithdrawals from "@/components/equipment/PendingWithdrawals";
 import MyWithdrawalRequests from "@/components/equipment/MyWithdrawalRequests";
 import ReturnConfirmDialog from "@/components/equipment/ReturnConfirmDialog";
 import { WAREHOUSES } from "@/lib/constants";
+import { hasPermission, effectivePermissions } from "@/lib/permissions";
 
 export default function Equipment() {
   const { toast } = useToast();
@@ -22,6 +23,8 @@ export default function Equipment() {
   const { previewRole, previewPluga } = usePreviewRole();
   const [settings, setSettings] = useState(null);
   const [items, setItems] = useState([]);
+  const [myPermissions, setMyPermissions] = useState([]);
+  const [permissionsLoading, setPermissionsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [activeWarehouse, setActiveWarehouse] = useState(WAREHOUSES[0]);
   const [itemFormOpen, setItemFormOpen] = useState(false);
@@ -49,15 +52,37 @@ export default function Equipment() {
     loadData().finally(() => setLoading(false));
   }, [loadData]);
 
+  // "אחראי משיכות ציוד" used to be its own profiles.equipment_manager flag;
+  // it's now the equipment_manager delegated permission instead (see
+  // src/lib/permissions.js), granted the same way as every other permission
+  // in AdminPanel's "הרשאות מיוחדות" section.
+  useEffect(() => {
+    if (!user?.id) return;
+    base44.entities.UserPermission.filter({ user_id: user.id })
+      .then(setMyPermissions)
+      .catch(() => setMyPermissions([]))
+      .finally(() => setPermissionsLoading(false));
+  }, [user?.id]);
+
   const effectiveRole = previewRole || user?.role;
   const effectivePluga = previewRole === "קלפ" ? previewPluga : user?.pluga;
   const isAdmin = effectiveRole === "admin";
   const isKlaf = effectiveRole === "קלפ";
   const isResponsible = settings?.responsible_klaf_id === user?.id;
-  const canEdit = isAdmin || isResponsible || user?.equipment_manager;
+  // effectivePermissions needs the user's REAL role (never a previewed one)
+  // so admin-preview never hands a previewed role an admin's permissions.
+  const myEffectivePermissions = effectivePermissions(myPermissions, user?.role);
+  const isEquipmentManager = hasPermission(myEffectivePermissions, "equipment_manager");
+  const canEdit = isAdmin || isResponsible || isEquipmentManager;
   const canAddItem = canEdit || isKlaf;
+  // Who's allowed to set an item's target quantity (used to detect a
+  // shortage at withdrawal time and suggest a Playbox completion order) —
+  // specifically playbox_orders or equipment_manager, per the feature
+  // request, not the broader canEdit (which also includes isResponsible,
+  // a separate legacy per-item mechanism unrelated to either permission).
+  const canSetTargets = isAdmin || isEquipmentManager || hasPermission(myEffectivePermissions, "playbox_orders");
 
-  if (!user || loading) {
+  if (!user || loading || permissionsLoading) {
     return (
       <div className="flex justify-center py-20">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -284,8 +309,16 @@ export default function Equipment() {
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">כמות: {item.quantity}</p>
+                  <p className="text-xs text-muted-foreground">
+                    כמות: {item.quantity}
+                    {Number(item.target_quantity) > 0 && ` · יעד: ${item.target_quantity}`}
+                  </p>
                 </div>
+                {Number(item.target_quantity) > 0 && Number(item.quantity) < Number(item.target_quantity) && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                    חסר {Number(item.target_quantity) - Number(item.quantity)}
+                  </span>
+                )}
                 {item.returnable && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
                     להחזרה
@@ -326,6 +359,7 @@ export default function Equipment() {
         onSubmit={handleItemSubmit}
         warehouse={activeWarehouse}
         editingItem={editingItem}
+        canSetTarget={canSetTargets}
       />
       <WithdrawalForm
         open={withdrawalOpen}

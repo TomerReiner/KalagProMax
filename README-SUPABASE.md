@@ -121,6 +121,63 @@ checklist — do these steps in order.
   colored dot per pluga and a tinted background once checked). Already-colored
   controls (`GapForm.jsx`, `StandaloneTaskForm.jsx`, the constraint-form and
   event-confirmation pills) were left as they were.
+- The gaps page (`src/pages/Home.jsx`, "מעקב פערי בנייה") now has a second
+  view alongside the original card list: a Jira-style board
+  (`src/components/gaps/GapBoard.jsx`), one column per status (טרם הועלה /
+  בטיפול / טופל), cards draggable between columns to change status — using
+  `@hello-pangea/dnd`, which was already a dependency but unused until now.
+  **The board is the new default view** (a "לוח"/"רשימה" toggle switches to
+  the list); the original "פעילים"/"ארכיון" toggle only applies to the list,
+  since the board already shows every status side by side as its own column
+  (that's the point of a board — "טופל" is just another column, not hidden).
+  Dragging a card updates its status the same way the list's status buttons
+  do — same `Gap.update` call, same `GapUpdate` history log entry — with an
+  optimistic local update so the card doesn't visibly snap back while the
+  request is in flight. If you don't already have `@hello-pangea/dnd`
+  installed locally, run `npm install` after pulling this — it's in
+  `package.json`'s dependencies but may not be in your `node_modules` yet.
+  The board also got a more prominent frame: a thick outer border around the
+  whole board (so it reads as its own distinct section of the page) plus a
+  thicker, status-colored border on each column (instead of a thin uniform
+  gray one), so the three lists read as clearly separate the way Jira's do.
+- "אחראי משיכות ציוד" (equipment withdrawal manager) moved from its own
+  standalone toggle in AdminPanel's users list into the delegated-permissions
+  system (`src/lib/permissions.js`'s `PERMISSION_LIST`, alongside
+  `frisa_pina`/`playbox_orders`/`meal_regulators`) — it now lives under
+  "הרשאות מיוחדות" like every other delegated permission instead of its own
+  separate switch. `Equipment.jsx`'s `canEdit` check now reads the
+  `equipment_manager` permission (via `hasPermission`/`effectivePermissions`,
+  the same pattern `Playbox.jsx` already uses) instead of the
+  `profiles.equipment_manager` column. `supabase/migrations/0011_equipment_manager_permission.sql`
+  backfills a permission row for anyone who already had the old flag set, so
+  no one loses access; the old column itself is left in place (just no
+  longer read by the app) rather than dropped.
+- Equipment shortage → Playbox completion-order suggestion. Whoever holds the
+  `playbox_orders` or `equipment_manager` permission can now set a target
+  quantity per warehouse item (`warehouse_items.target_quantity`, added by
+  `supabase/migrations/0012_warehouse_item_target_quantity.sql`) — e.g. "we
+  should always have 10 tents in מכולה" — through a new field in the
+  add/edit-item dialog (`WarehouseItemForm.jsx`, only shown to those two
+  permissions/admin; `Equipment.jsx`'s item list shows the configured target
+  and a red "חסר" badge to everyone once the current quantity is already
+  below it). When anyone submits an equipment withdrawal
+  (`WithdrawalForm.jsx`) that would drop an item below its target, submitting
+  now shows an extra confirmation step listing exactly what would go short
+  and offers to auto-create a `playbox_orders` row for the shortfall
+  (`auto_generated: true`, same convention as the existing pluga-level stock
+  gaps in `Playbox.jsx`'s "מלאי ומעקב חוסרים" tab) — attributed to the
+  withdrawing pluga, since `playbox_orders` always needs one pluga and this
+  is a shared-warehouse shortage rather than any one pluga's own supply.
+  Dedup here is by item name alone (not pluga+item) since the physical stock
+  is shared: an auto order already pending for that item from *any* pluga is
+  treated as already covering it. Once created, the order's text is shown
+  with a copy-to-clipboard button, so the trigger point (the person who just
+  found the shortage while withdrawing) can paste it anywhere (WhatsApp, an
+  email, ...) for whoever actually places Playbox orders.
+  The same copy mechanism was added more generally to `Playbox.jsx`'s
+  "הזמנות" tab too — "העתק הזמנות ממתינות כטקסט" formats every currently-
+  "ממתין" order (not yet actually placed) as one block of text, for relaying
+  the whole list at once rather than one shortage at a time.
 - The 3 Base44 backend functions became Vercel serverless functions under
   `/api`, plus a 4th (`/api/invite-user.js`) that replaces
   `base44.users.inviteUser` (admin invites need the service-role key, which
@@ -171,9 +228,16 @@ to the next):
     values.
 11. `supabase/migrations/0010_playbox_orders_destination_warehouse.sql` —
     safe/idempotent, adds `playbox_orders.destination_warehouse`.
+12. `supabase/migrations/0011_equipment_manager_permission.sql` —
+    safe/idempotent, backfills a `user_permissions` row for every profile
+    that currently has `equipment_manager = true`, so nobody loses access
+    when the app switches from that column to the permission.
+13. `supabase/migrations/0012_warehouse_item_target_quantity.sql` —
+    safe/idempotent, adds `warehouse_items.target_quantity` (defaults to 0,
+    meaning "no target set").
 
 (Or, if you use the Supabase CLI: `supabase db push` after `supabase link` —
-it will pick up all eleven in filename order.)
+it will pick up all thirteen in filename order.)
 
 ## 2. Turn on email-OTP signup (only if you'll use the Register page)
 
