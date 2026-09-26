@@ -49,9 +49,13 @@ checklist — do these steps in order.
   that table if it exists; a no-op on a project that never had it.
 - `supabase/migrations/0007_meal_regulator_phones.sql` adds a phone number
   next to each meal regulator's name — see the dedicated section below.
-- `supabase/migrations/0008_playbox_stock_tracking.sql` adds Playbox
-  stock/reorder-point tracking (`playbox_items` + `playbox_orders
-  .auto_generated`) — see the dedicated section below.
+- `supabase/migrations/0008_playbox_stock_tracking.sql` added
+  `playbox_orders.auto_generated` plus a per-pluga stock/reorder-point
+  tracking table, `playbox_items`. The per-pluga tracking UI built on top of
+  it was later removed (see the dedicated Playbox section below) — the
+  `auto_generated` column stays in active use for the equipment-shortage
+  flow that replaced it, and `playbox_items` is left in the database unused
+  rather than dropped.
 - `supabase/migrations/0009_playbox_orders_received_status.sql` adds
   "התקבל" (received) as its own `playbox_orders.status` value, separate from
   "הוזמן" (ordered) — see the dedicated section below.
@@ -172,8 +176,8 @@ checklist — do these steps in order.
   (`WithdrawalForm.jsx`) that would drop an item below its target, submitting
   now shows an extra confirmation step listing exactly what would go short
   and offers to auto-create a `playbox_orders` row for the shortfall
-  (`auto_generated: true`, same convention as the existing pluga-level stock
-  gaps in `Playbox.jsx`'s "מלאי ומעקב חוסרים" tab) — with no pluga on the
+  (`auto_generated: true`, the same flag `playbox_orders` already had from
+  `supabase/migrations/0008_playbox_stock_tracking.sql`) — with no pluga on the
   order itself (see `supabase/migrations/0013_playbox_orders_optional_pluga.sql`
   below): this is a shared-warehouse shortage, not any one pluga's own
   supply, so there's nothing to attribute it to. Dedup here is by item name
@@ -191,6 +195,11 @@ checklist — do these steps in order.
   Same dedup-by-item-name logic as above, so running it repeatedly (or
   alongside a withdrawal's own shortage flow) never creates duplicates for a
   shortage that's already got a pending auto order.
+  This "צור הזמנות בפלייבוקס לכל החוסרים" button confirms before creating
+  anything: clicking it computes exactly what it's about to create
+  (post-dedup) and opens a dialog listing every item, quantity and warehouse
+  first; the orders are only actually created once that's explicitly
+  confirmed, and cancelling creates nothing.
   The same copy mechanism was added more generally to `Playbox.jsx`'s
   "הזמנות" tab too — "העתק הזמנות ממתינות כטקסט" formats every currently-
   "ממתין" order (not yet actually placed) as one block of text, for relaying
@@ -199,6 +208,29 @@ checklist — do these steps in order.
   status), for relaying just that one order on its own; both buttons share
   the same one-line-per-order text format (`formatOneOrderAsText` /
   `formatOrdersAsText` in `Playbox.jsx`).
+- "סיכום מסדר" (`daily_summaries.entries`, a `jsonb` array — no schema
+  migration needed, the shape living inside that column just grew) now
+  tracks a responsible pluga per entry, and an entry can cover several
+  גזרות at once instead of exactly one: each row is
+  `{ areas: [...], pluga, notes }` (`areas` — plural — replacing the old
+  singular `area`) built in the summary form by toggling as many of the 22
+  `LOCATIONS` as apply and optionally picking one `PLUGOT` value as the
+  pluga responsible for all of them, rather than adding one area at a time.
+  An already-saved entry from before this change (just `{ area, notes }`,
+  no `pluga`) still displays and copies fine — every read goes through an
+  `entryAreas(e)` helper that falls back to wrapping the old singular
+  `area` in a one-item array when `areas` isn't there. This exists as two
+  independent screens onto the same `DailySummary` entity —
+  `src/pages/DailySummary.jsx` (the standalone page) and
+  `src/components/klaf/KlafSummary.jsx` (embedded in the Klaf page's daily
+  view) — both updated identically and kept in sync by hand, the same
+  convention already used for `Playbox.jsx`/`WithdrawalForm.jsx`'s order-text
+  formatting, since there's no shared UI-utility module yet.
+- The test-mode fixture data (`src/testdata/fixtures.js`) was updated to
+  match `playbox_orders` no longer being pluga-specific: every
+  manually-added demo order there now has `pluga: null`; only the one
+  `auto_generated: true` demo order (from the pluga-level "מלאי ומעקב
+  חוסרים" stock tracker) still carries one, since that path still needs it.
 - The 3 Base44 backend functions became Vercel serverless functions under
   `/api`, plus a 4th (`/api/invite-user.js`) that replaces
   `base44.users.inviteUser` (admin invites need the service-role key, which
@@ -385,54 +417,43 @@ was folded into wherever it naturally belongs in the app instead:
   was delegated this instead gets a minimal version of the Klaf page (just a
   date nav and the breakdown, no task list) when they visit `/klaf`.
 - **פלייבוקס והזמנות להמשך השבוע** (`playbox_orders`) — org-wide, not
-  per-pluga: whoever holds this sees a consolidated view of every pluga's
-  order requests, before placing the real order on Playbox's own site. This
-  one *does* get its own page — `src/pages/Playbox.jsx` at `/playbox` —
-  since it's a focused, single-purpose screen rather than a grab-bag of
-  unrelated tabs. The page has two tabs:
-  - **הזמנות** — the original manual order log: item, quantity and optional
-    notes, track status: `ממתין` → `הוזמן` → `התקבל`, or `בוטל`. An order is
-    **not** tagged to a specific pluga
-    (`supabase/migrations/0013_playbox_orders_optional_pluga.sql` drops the
-    `not null` on `playbox_orders.pluga`) — Playbox doesn't split its own
-    catalog by pluga, so requiring one on every manually-added order was
-    never actually necessary; the pluga badge on an order row only ever
-    shows up now for the pluga-level "מלאי ומעקב חוסרים" auto-generated
-    orders below, which still track one internally (see that bullet).
-    "התקבל" (received) is deliberately its own status rather than
-    folded into "הוזמן"
-    (`supabase/migrations/0009_playbox_orders_received_status.sql`) —
-    placing the real order and it actually showing up are two different
-    events. An order with status `הוזמן` gets a dedicated green "התקבל"
-    button (in addition to the status dropdown, for anyone who prefers
-    that); either one opens a small "לאן ההזמנה הולכת?" dialog asking which
-    of the 3 physical warehouses (`WAREHOUSES` in `src/lib/constants.js` —
-    the same מכולה / מחסן קרביץ / מחסן לוגיסטי as `/equipment`) the goods
-    actually went into
-    (`supabase/migrations/0010_playbox_orders_destination_warehouse.sql`,
-    `playbox_orders.destination_warehouse`). Confirming a warehouse credits
-    **two** places: the matching `playbox_items.current_quantity` below (so
-    the stock tab reflects the shortage being filled — silently skipped if
-    no stock item matches that pluga+item, e.g. an ad-hoc order that was
-    never tracked as a stock item), and that warehouse's own
-    `warehouse_items` quantity on `/equipment` — creating the item there if
-    it doesn't already exist — so equipment received via Playbox actually
-    shows up in "משיכות ציוד", not just as a closed order here.
-  - **מלאי ומעקב חוסרים** — stock/reorder-point tracking added in
-    `supabase/migrations/0008_playbox_stock_tracking.sql` (`playbox_items`:
-    `pluga`, `item`, `target_quantity`, `current_quantity`, unique per
-    pluga+item). Same permission holders (plus admins) set how much of each
-    consumable a pluga is supposed to have on hand ("צריך שיהיה") versus how
-    much it currently has ("יש כרגע"), broken down by pluga the same way as
-    the meal-regulators cards. A "צור הזמנות לחוסרים" button scans every
-    item below its target and creates a `playbox_orders` row for the gap
-    (`auto_generated: true`, quantity = target − current), which then shows
-    up in the "הזמנות" tab with an "אוטומטי" badge for the same person to
-    place for real — the button never places an order itself, it only drafts
-    the request. Pressing it again doesn't pile up duplicates: it skips any
-    pluga+item that already has an active (`ממתין` or `הוזמן`) auto-generated
-    order — marking that order `התקבל` (crediting the stock back, above) or
-    `בוטל` frees it up to generate a new one next time.
+  per-pluga: whoever holds this sees a consolidated view of every order
+  request, before placing the real order on Playbox's own site.
+  `src/pages/Playbox.jsx` at `/playbox` is a single-purpose screen for it —
+  item, quantity and optional notes, track status: `ממתין` → `הוזמן` →
+  `התקבל`, or `בוטל`. An order is **not** tagged to a specific pluga
+  (`supabase/migrations/0013_playbox_orders_optional_pluga.sql` drops the
+  `not null` on `playbox_orders.pluga`) — Playbox doesn't split its own
+  catalog by pluga, so requiring one on every order was never actually
+  necessary. "התקבל" (received) is deliberately its own status rather than
+  folded into "הוזמן"
+  (`supabase/migrations/0009_playbox_orders_received_status.sql`) —
+  placing the real order and it actually showing up are two different
+  events. An order with status `הוזמן` gets a dedicated green "התקבל"
+  button (in addition to the status dropdown, for anyone who prefers
+  that); either one opens a small "לאן ההזמנה הולכת?" dialog asking which
+  of the 3 physical warehouses (`WAREHOUSES` in `src/lib/constants.js` —
+  the same מכולה / מחסן קרביץ / מחסן לוגיסטי as `/equipment`) the goods
+  actually went into
+  (`supabase/migrations/0010_playbox_orders_destination_warehouse.sql`,
+  `playbox_orders.destination_warehouse`). Confirming a warehouse credits
+  that warehouse's own `warehouse_items` quantity on `/equipment` —
+  creating the item there if it doesn't already exist — so equipment
+  received via Playbox actually shows up in "משיכות ציוד", not just as a
+  closed order here.
+  This page used to have a second tab, "מלאי ומעקב חוסרים" — per-pluga
+  target vs. current quantity tracking
+  (`supabase/migrations/0008_playbox_stock_tracking.sql`, the `playbox_items`
+  table) with its own "צור הזמנות לחוסרים" button, mirroring the one that
+  still exists on `/equipment`. **Removed**: the premise didn't hold — this
+  equipment was never actually any one pluga's own supply to track
+  separately, it's shared across all of them, which is exactly what
+  `warehouse_items.target_quantity` (below) already models correctly for
+  physical equipment. `playbox_items` itself, and any data already in it,
+  are left in the database rather than dropped — nothing reads or writes it
+  anymore, the same way `profiles.equipment_manager` and
+  `src/pages/Delegations.jsx` were retired elsewhere in this app rather than
+  deleted outright.
 
 **"משיכת מזון לנסיעות" turned out not to need a permission or a table at
 all.** It's just a checkbox on the event form itself

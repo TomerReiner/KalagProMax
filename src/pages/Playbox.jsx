@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Truck, Plus, Trash2, Shield, PackageSearch, Sparkles, PackageCheck, Warehouse, Copy } from "lucide-react";
-import { PLUGOT, PLUGA_COLORS, WAREHOUSES, toDateStr } from "@/lib/constants";
+import { Loader2, Truck, Plus, Trash2, Shield, Sparkles, PackageCheck, Warehouse, Copy } from "lucide-react";
+import { PLUGA_COLORS, WAREHOUSES, toDateStr } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import { hasPermission, effectivePermissions } from "@/lib/permissions";
@@ -46,10 +45,20 @@ function formatOrdersAsText(orders) {
 // Standalone page for the playbox_orders delegated permission (see
 // src/lib/permissions.js and supabase/migrations/0005_delegated_permissions.sql).
 // Org-wide, not per-pluga: whoever is granted this sees every pluga's
-// consolidated weekly order requests here, regardless of their role. The
-// same permission also gates the stock/reorder-point tab added in
-// supabase/migrations/0008_playbox_stock_tracking.sql — no separate
-// permission key for it.
+// consolidated weekly order requests here, regardless of their role.
+//
+// This used to have a second tab — "מלאי ומעקב חוסרים"
+// (supabase/migrations/0008_playbox_stock_tracking.sql, per-pluga target vs.
+// current quantity per playbox_items row) — removed because the premise
+// didn't hold: this equipment isn't any one pluga's own supply to track
+// separately, it's shared across all of them, exactly like
+// warehouse_items.target_quantity already models for physical equipment
+// (see supabase/migrations/0012_warehouse_item_target_quantity.sql and
+// Equipment.jsx's own "צור הזמנות בפלייבוקס לכל החוסרים"). The
+// playbox_items table itself, and its data, are left in place rather than
+// dropped — nothing reads or writes it anymore, matching how
+// profiles.equipment_manager and src/pages/Delegations.jsx were retired
+// elsewhere in this app.
 export default function Playbox() {
   const [user, setUser] = useState(null);
   const [myPermissions, setMyPermissions] = useState([]);
@@ -93,18 +102,7 @@ export default function Playbox() {
         <Truck className="w-5 h-5 text-slate-500" />
         <h1 className="text-xl font-bold">פלייבוקס</h1>
       </div>
-      <Tabs defaultValue="orders" dir="rtl" className="w-full">
-        <TabsList className="w-full grid grid-cols-2">
-          <TabsTrigger value="orders">הזמנות</TabsTrigger>
-          <TabsTrigger value="stock">מלאי ומעקב חוסרים</TabsTrigger>
-        </TabsList>
-        <TabsContent value="orders">
-          <PlayboxOrders />
-        </TabsContent>
-        <TabsContent value="stock">
-          <PlayboxStock />
-        </TabsContent>
-      </Tabs>
+      <PlayboxOrders />
     </div>
   );
 }
@@ -188,28 +186,19 @@ function PlayboxOrders() {
   // supabase/migrations/0009_playbox_orders_received_status.sql) — placing
   // the order and it actually showing up are two different events. Once a
   // destination warehouse is chosen (see the dialog below), receiving an
-  // order credits TWO places: the matching pluga-level stock item's "יש
-  // כרגע" (so the stock tab reflects the shortage being filled — silently
-  // skipped if no playbox_items row matches this pluga+item, e.g. an ad-hoc
-  // order that was never tracked as a stock item), and the chosen physical
-  // warehouse's warehouse_items quantity (see
+  // order credits that physical warehouse's warehouse_items quantity (see
   // supabase/migrations/0010_playbox_orders_destination_warehouse.sql), so
   // the goods actually show up in "משיכות ציוד" — creating that warehouse
-  // item if it doesn't exist there yet.
+  // item if it doesn't exist there yet. (This used to also credit a
+  // matching pluga-level playbox_items row's "יש כרגע" — dropped along with
+  // the rest of that per-pluga stock tracking; see the comment on Playbox()
+  // above.)
   const handleConfirmReceive = async (warehouse) => {
     const order = receivingOrder;
     if (!order) return;
     setReceivingOrder(null);
     try {
       await base44.entities.PlayboxOrder.update(order.id, { status: "התקבל", destination_warehouse: warehouse });
-
-      const stockMatches = await base44.entities.PlayboxItem.filter({ pluga: order.pluga, item: order.item });
-      if (stockMatches.length > 0) {
-        const it = stockMatches[0];
-        await base44.entities.PlayboxItem.update(it.id, {
-          current_quantity: Number(it.current_quantity) + Number(order.quantity),
-        });
-      }
 
       const warehouseMatches = await base44.entities.WarehouseItem.filter({ warehouse, name: order.item });
       if (warehouseMatches.length > 0) {
@@ -220,7 +209,7 @@ function PlayboxOrders() {
       }
 
       await load();
-      toast({ title: "ההזמנה סומנה כהתקבלה", description: `"${order.item}" נוסף ל${warehouse} ועודכן במלאי הפלוגה`, duration: 3000 });
+      toast({ title: "ההזמנה סומנה כהתקבלה", description: `"${order.item}" נוסף ל${warehouse}`, duration: 3000 });
     } catch (err) {
       toast({ title: "שגיאה בסימון כהתקבל", description: err.message, variant: "destructive" });
     }
@@ -291,11 +280,11 @@ function PlayboxOrders() {
             <div key={o.id} className="border rounded-lg p-3 bg-white flex items-start justify-between gap-2 flex-wrap">
               <div className="min-w-0 space-y-0.5">
                 <div className="flex items-center gap-2 flex-wrap">
-                  {/* Most orders have no pluga at all now (see
-                      supabase/migrations/0013_playbox_orders_optional_pluga.sql)
-                      — this only ever fires for the pluga-level "מלאי ומעקב
-                      חוסרים" auto-generated orders below, which still track
-                      one. */}
+                  {/* No current path in the app sets pluga on an order
+                      anymore (see supabase/migrations/0013_playbox_orders_optional_pluga.sql
+                      and the removal of the old pluga-level "מלאי ומעקב
+                      חוסרים" tab) — this only guards against a pluga left
+                      over on older data. */}
                   {o.pluga && (
                     <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", PLUGA_COLORS[o.pluga]?.light)}>{o.pluga}</span>
                   )}
@@ -370,245 +359,6 @@ function PlayboxOrders() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// מלאי ומעקב חוסרים — target vs. current quantity per pluga+item (see
-// supabase/migrations/0008_playbox_stock_tracking.sql). Whoever holds
-// playbox_orders (plus admins, automatically) sets how much of each item the
-// pluga is supposed to have on hand and how much it currently has; the
-// "צור הזמנות לחוסרים" button turns every gap into an initial playbox_orders
-// row (auto_generated: true) that the same responsible person can then place
-// for real from the "הזמנות" tab — it never places anything itself.
-// ---------------------------------------------------------------------------
-const EMPTY_ITEM_FORM = { item: "", target_quantity: "", current_quantity: "" };
-
-function PlayboxStock() {
-  const { toast } = useToast();
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [newItem, setNewItem] = useState(() => Object.fromEntries(PLUGOT.map((p) => [p, EMPTY_ITEM_FORM])));
-  const [generating, setGenerating] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      const data = await base44.entities.PlayboxItem.list("item", 500);
-      setItems(data);
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-    const unsubscribe = base44.entities.PlayboxItem.subscribe(() => load());
-    return unsubscribe;
-  }, [load]);
-
-  const itemsByPluga = useMemo(() => {
-    const map = Object.fromEntries(PLUGOT.map((p) => [p, []]));
-    for (const it of items) {
-      if (map[it.pluga]) map[it.pluga].push(it);
-    }
-    return map;
-  }, [items]);
-
-  const gapCount = useMemo(
-    () => items.filter((it) => Number(it.current_quantity) < Number(it.target_quantity)).length,
-    [items]
-  );
-
-  const handleAddItem = async (pluga) => {
-    const form = newItem[pluga] || EMPTY_ITEM_FORM;
-    const name = form.item.trim();
-    if (!name) return;
-    try {
-      await base44.entities.PlayboxItem.create({
-        pluga,
-        item: name,
-        target_quantity: Number(form.target_quantity) || 0,
-        current_quantity: Number(form.current_quantity) || 0,
-      });
-      setNewItem((n) => ({ ...n, [pluga]: EMPTY_ITEM_FORM }));
-      await load();
-    } catch (err) {
-      toast({ title: "שגיאה בהוספת הפריט", description: err.message, variant: "destructive" });
-    }
-  };
-
-  const handleUpdateQuantity = async (it, field, value) => {
-    const num = value === "" ? 0 : Number(value);
-    if (Number.isNaN(num)) return;
-    try {
-      await base44.entities.PlayboxItem.update(it.id, { [field]: num });
-      await load();
-    } catch (err) {
-      toast({ title: "שגיאה בעדכון", description: err.message, variant: "destructive" });
-    }
-  };
-
-  const handleDeleteItem = async (it) => {
-    try {
-      await base44.entities.PlayboxItem.delete(it.id);
-      await load();
-    } catch (err) {
-      toast({ title: "שגיאה במחיקה", description: err.message, variant: "destructive" });
-    }
-  };
-
-  const handleGenerateGapOrders = async () => {
-    setGenerating(true);
-    try {
-      const gaps = items.filter((it) => Number(it.current_quantity) < Number(it.target_quantity));
-      if (gaps.length === 0) {
-        toast({ title: "אין חוסרים כרגע", duration: 2000 });
-        return;
-      }
-      // Avoid piling up duplicate auto-generated orders for the same
-      // pluga+item while an earlier one is still active (not yet received
-      // or cancelled) — "ממתין" and "הוזמן" both mean it's still in flight.
-      const existingOrders = await base44.entities.PlayboxOrder.list("-order_date", 500);
-      const hasPendingAuto = (pluga, item) =>
-        existingOrders.some(
-          (o) => o.pluga === pluga && o.item === item && o.auto_generated && (o.status === "ממתין" || o.status === "הוזמן")
-        );
-
-      const today = toDateStr(new Date());
-      let created = 0;
-      for (const gap of gaps) {
-        if (hasPendingAuto(gap.pluga, gap.item)) continue;
-        await base44.entities.PlayboxOrder.create({
-          pluga: gap.pluga,
-          order_date: today,
-          item: gap.item,
-          quantity: Number(gap.target_quantity) - Number(gap.current_quantity),
-          notes: "נוצר אוטומטית ממעקב המלאי",
-          status: "ממתין",
-          auto_generated: true,
-        });
-        created += 1;
-      }
-      if (created === 0) {
-        toast({ title: "כל החוסרים כבר הוזמנו", description: "יש הזמנה אוטומטית ממתינה לכל חוסר קיים", duration: 2500 });
-      } else {
-        toast({ title: `נוצרו ${created} הזמנות לחוסרים`, description: "אפשר לראות ולהזמין בפועל בלשונית \"הזמנות\"", duration: 3000 });
-      }
-    } catch (err) {
-      toast({ title: "שגיאה ביצירת הזמנות", description: err.message, variant: "destructive" });
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  if (loading) {
-    return <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
-  }
-
-  return (
-    <div className="space-y-3 pt-2">
-      <Button
-        onClick={handleGenerateGapOrders}
-        disabled={generating}
-        className="w-full gap-1.5"
-        variant={gapCount > 0 ? "default" : "outline"}
-      >
-        {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <PackageSearch className="w-4 h-4" />}
-        צור הזמנות לחוסרים{gapCount > 0 ? ` (${gapCount})` : ""}
-      </Button>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        {PLUGOT.map((pluga) => {
-          const color = PLUGA_COLORS[pluga];
-          const plugaItems = itemsByPluga[pluga];
-          const form = newItem[pluga] || EMPTY_ITEM_FORM;
-          return (
-            <div key={pluga} className={cn("rounded-xl border-2 p-3 space-y-2", color?.light, color?.border)}>
-              <p className="text-sm font-bold">{pluga}</p>
-              {plugaItems.length === 0 ? (
-                <p className="text-xs text-muted-foreground">לא הוגדרו פריטים</p>
-              ) : (
-                <div className="space-y-1.5">
-                  {plugaItems.map((it) => {
-                    const short = Number(it.current_quantity) < Number(it.target_quantity);
-                    return (
-                      <div key={it.id} className="bg-white rounded-lg p-2 space-y-1.5">
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <span className="text-sm font-medium break-words">{it.item}</span>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {short && (
-                              <span className="text-xs px-1.5 py-0.5 rounded-full font-medium bg-red-100 text-red-700">
-                                חסר {Number(it.target_quantity) - Number(it.current_quantity)}
-                              </span>
-                            )}
-                            <button onClick={() => handleDeleteItem(it)} className="text-muted-foreground hover:text-destructive">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <div className="space-y-0.5">
-                            <p className="text-[10px] text-muted-foreground">יש כרגע</p>
-                            <Input
-                              type="number"
-                              min="0"
-                              defaultValue={it.current_quantity}
-                              onBlur={(e) => handleUpdateQuantity(it, "current_quantity", e.target.value)}
-                              className="h-8 text-sm"
-                            />
-                          </div>
-                          <div className="space-y-0.5">
-                            <p className="text-[10px] text-muted-foreground">צריך שיהיה</p>
-                            <Input
-                              type="number"
-                              min="0"
-                              defaultValue={it.target_quantity}
-                              onBlur={(e) => handleUpdateQuantity(it, "target_quantity", e.target.value)}
-                              className="h-8 text-sm"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              <div className="space-y-1.5 pt-1 border-t border-dashed">
-                <Input
-                  placeholder="פריט חדש"
-                  value={form.item}
-                  onChange={(e) => setNewItem((n) => ({ ...n, [pluga]: { ...form, item: e.target.value } }))}
-                  className="h-8 text-sm bg-white"
-                />
-                <div className="grid grid-cols-[1fr_1fr_auto] gap-1.5">
-                  <Input
-                    type="number"
-                    min="0"
-                    placeholder="יש"
-                    value={form.current_quantity}
-                    onChange={(e) => setNewItem((n) => ({ ...n, [pluga]: { ...form, current_quantity: e.target.value } }))}
-                    className="h-8 text-sm bg-white"
-                  />
-                  <Input
-                    type="number"
-                    min="0"
-                    placeholder="צריך"
-                    value={form.target_quantity}
-                    onChange={(e) => setNewItem((n) => ({ ...n, [pluga]: { ...form, target_quantity: e.target.value } }))}
-                    className="h-8 text-sm bg-white"
-                  />
-                  <Button size="icon" variant="outline" className="h-8 w-8 shrink-0 bg-white" onClick={() => handleAddItem(pluga)}>
-                    <Plus className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }

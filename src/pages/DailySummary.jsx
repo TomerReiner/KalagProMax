@@ -7,7 +7,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { LOCATIONS, formatHebrewDate, toDateStr } from "@/lib/constants";
+import { LOCATIONS, PLUGOT, PLUGA_COLORS, formatHebrewDate, toDateStr } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 
 function parseEntries(entries) {
   if (!entries) return [];
@@ -18,12 +19,25 @@ function parseEntries(entries) {
   return [];
 }
 
+// An entry's areas — either the current `areas` array (several גזרות under
+// one responsible pluga) or, for an entry saved before that existed, the
+// old singular `area` string wrapped in a one-item array. Kept in sync
+// manually with the identical helper in src/components/klaf/KlafSummary.jsx
+// (same DailySummary entity/entries shape, two separate screens onto it —
+// see that file for why there's no shared module for it yet).
+function entryAreas(e) {
+  if (Array.isArray(e.areas)) return e.areas;
+  if (e.area) return [e.area];
+  return [];
+}
+
 export default function DailySummaryPage() {
   const [summaries, setSummaries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [entries, setEntries] = useState([]);
-  const [newArea, setNewArea] = useState("");
+  const [newAreas, setNewAreas] = useState([]);
+  const [newPluga, setNewPluga] = useState("");
   const [newNotes, setNewNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
@@ -33,7 +47,8 @@ export default function DailySummaryPage() {
     const dateStr = formatHebrewDate(summary.summary_date);
     let text = `סיכום מסדר - ${dateStr}\n\n`;
     parsed.forEach((e) => {
-      text += `${e.area}:\n`;
+      const header = entryAreas(e).join(", ") + (e.pluga ? ` (${e.pluga})` : "");
+      text += `${header}:\n`;
       if (e.notes) text += `${e.notes}\n`;
       text += `\n`;
     });
@@ -58,10 +73,15 @@ export default function DailySummaryPage() {
     loadSummaries();
   }, [loadSummaries]);
 
+  const toggleArea = (area) => {
+    setNewAreas((prev) => (prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area]));
+  };
+
   const addEntry = () => {
-    if (!newArea.trim()) return;
-    setEntries([...entries, { area: newArea, notes: newNotes }]);
-    setNewArea("");
+    if (newAreas.length === 0) return;
+    setEntries([...entries, { areas: newAreas, pluga: newPluga || null, notes: newNotes }]);
+    setNewAreas([]);
+    setNewPluga("");
     setNewNotes("");
   };
 
@@ -131,7 +151,14 @@ export default function DailySummaryPage() {
                 <div className="space-y-2">
                   {parsed.map((e, i) => (
                     <div key={i} className="flex gap-3 text-sm border-r-2 border-slate-200 pr-3">
-                      <div className="font-medium min-w-[140px]">{e.area}</div>
+                      <div className="font-medium min-w-[140px] flex flex-wrap items-center gap-1.5">
+                        {e.pluga && (
+                          <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium", PLUGA_COLORS[e.pluga]?.light)}>
+                            {e.pluga}
+                          </span>
+                        )}
+                        <span>{entryAreas(e).join(", ")}</span>
+                      </div>
                       <div className="text-muted-foreground whitespace-pre-wrap">{e.notes}</div>
                     </div>
                   ))}
@@ -150,12 +177,47 @@ export default function DailySummaryPage() {
           <div className="space-y-4">
             <div className="space-y-3 border rounded-lg p-4 bg-slate-50">
               <div className="space-y-2">
-                <Label>איזור</Label>
-                <Select value={newArea} onValueChange={setNewArea}>
-                  <SelectTrigger><SelectValue placeholder="בחר איזור" /></SelectTrigger>
+                <div className="flex items-center justify-between">
+                  <Label>גזרות (אפשר לבחור כמה)</Label>
+                  <button
+                    type="button"
+                    onClick={() => setNewAreas(newAreas.length === LOCATIONS.length ? [] : [...LOCATIONS])}
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    {newAreas.length === LOCATIONS.length ? "נקה הכל" : "בחר הכל"}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2 border rounded-lg bg-white">
+                  {LOCATIONS.map((l) => {
+                    const selected = newAreas.includes(l);
+                    return (
+                      <button
+                        key={l}
+                        type="button"
+                        onClick={() => toggleArea(l)}
+                        className={cn(
+                          "text-xs px-2.5 py-1 rounded-full border transition-colors",
+                          selected ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-600 border-border"
+                        )}
+                      >
+                        {l}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>פלוגה אחראית (אופציונלי)</Label>
+                <Select value={newPluga || ""} onValueChange={setNewPluga}>
+                  <SelectTrigger><SelectValue placeholder="בחר פלוגה אחראית" /></SelectTrigger>
                   <SelectContent>
-                    {LOCATIONS.map((l) => (
-                      <SelectItem key={l} value={l}>{l}</SelectItem>
+                    {PLUGOT.map((p) => (
+                      <SelectItem key={p} value={p}>
+                        <span className="flex items-center gap-2">
+                          <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p]?.dot)} />
+                          {p}
+                        </span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -165,7 +227,7 @@ export default function DailySummaryPage() {
                 <Textarea
                   value={newNotes}
                   onChange={(e) => setNewNotes(e.target.value)}
-                  placeholder="הערות לאיזור זה"
+                  placeholder="הערות לגזרות אלו"
                   rows={2}
                 />
               </div>
@@ -173,7 +235,7 @@ export default function DailySummaryPage() {
                 type="button"
                 variant="outline"
                 onClick={addEntry}
-                disabled={!newArea.trim()}
+                disabled={newAreas.length === 0}
                 className="gap-2 w-full"
               >
                 <Plus className="w-4 h-4" />
@@ -187,7 +249,14 @@ export default function DailySummaryPage() {
                 {entries.map((e, i) => (
                   <div key={i} className="flex items-start gap-3 border rounded-lg p-3 bg-white">
                     <div className="flex-1">
-                      <p className="text-sm font-medium">{e.area}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {e.pluga && (
+                          <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium", PLUGA_COLORS[e.pluga]?.light)}>
+                            {e.pluga}
+                          </span>
+                        )}
+                        <p className="text-sm font-medium">{entryAreas(e).join(", ")}</p>
+                      </div>
                       {e.notes && (
                         <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">{e.notes}</p>
                       )}

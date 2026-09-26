@@ -316,32 +316,26 @@ export function buildFixtures() {
     { id: "80000000-0000-4000-8000-000000000010", user_id: "e0000000-0000-4000-8000-000000000007", permission: "playbox_orders", pluga: null, ...stamp },
   ];
 
+  // pluga is null on every order below (see
+  // supabase/migrations/0013_playbox_orders_optional_pluga.sql) — Playbox
+  // doesn't split its catalog by pluga, so no order is ever tagged to one,
+  // manual or auto-generated. (The old per-pluga "מלאי ומעקב חוסרים" stock
+  // tracker that used to be the one thing still setting a pluga here —
+  // playbox_items — was removed for the same reason: this equipment isn't
+  // any one pluga's own supply either. See the comment on Playbox() in
+  // src/pages/Playbox.jsx.)
   const playbox_orders = [
-    // הזמנה כללית ללא שיוך לפלוגה — ההזמנה הרגילה כיום (ר'
-    // supabase/migrations/0013_playbox_orders_optional_pluga.sql): פלייבוקס
-    // לא מתחלק לפי פלוגות, אז אין צורך לתייג הזמנה לפלוגה ספציפית.
-    { id: "81000000-0000-4000-8000-000000000006", pluga: null, order_date: dateStr(D0), item: "נייר טואלט", quantity: 20, notes: null, status: "ממתין", auto_generated: false, destination_warehouse: null, ...stamp },
-    { id: "81000000-0000-4000-8000-000000000001", pluga: "פארן", order_date: dateStr(D1), item: "חטיפים", quantity: 10, notes: null, status: "ממתין", auto_generated: false, destination_warehouse: null, ...stamp },
-    { id: "81000000-0000-4000-8000-000000000002", pluga: "בשור", order_date: dateStr(D2), item: "שתייה קלה", quantity: 24, notes: "לאירוע יום שלישי", status: "הוזמן", auto_generated: false, destination_warehouse: null, ...stamp },
-    { id: "81000000-0000-4000-8000-000000000003", pluga: "צין", order_date: dateStr(D0), item: "עוגות", quantity: 3, notes: null, status: "בוטל", auto_generated: false, destination_warehouse: null, ...stamp },
-    // חוסר קיים שכבר קיבל הזמנה אוטומטית ממתינה — מדגים את מניעת הכפילות
-    // ב"צור הזמנות לחוסרים" (ר' playbox_items למטה: פארן/מגבונים 5 מתוך 20).
-    { id: "81000000-0000-4000-8000-000000000004", pluga: "פארן", order_date: dateStr(D0), item: "מגבונים", quantity: 15, notes: "נוצר אוטומטית ממעקב המלאי", status: "ממתין", auto_generated: true, destination_warehouse: null, ...stamp },
+    { id: "81000000-0000-4000-8000-000000000001", pluga: null, order_date: dateStr(D1), item: "חטיפים", quantity: 10, notes: null, status: "ממתין", auto_generated: false, destination_warehouse: null, ...stamp },
+    { id: "81000000-0000-4000-8000-000000000002", pluga: null, order_date: dateStr(D2), item: "שתייה קלה", quantity: 24, notes: "לאירוע יום שלישי", status: "הוזמן", auto_generated: false, destination_warehouse: null, ...stamp },
+    { id: "81000000-0000-4000-8000-000000000003", pluga: null, order_date: dateStr(D0), item: "עוגות", quantity: 3, notes: null, status: "בוטל", auto_generated: false, destination_warehouse: null, ...stamp },
+    // חוסר במחסן שכבר קיבל הזמנה אוטומטית ממתינה — מדגים את מניעת הכפילות
+    // ב-Equipment.jsx's "צור הזמנות בפלייבוקס לכל החוסרים": "שולחנות
+    // מתקפלים" (ר' warehouse_items למעלה: 15 מתוך 20 יעד) כבר מכוסה על ידי
+    // ההזמנה הזו, כך שהכפתור ידלג עליו; "אוהלים" (6 מתוך 10) נשאר בלי הזמנה
+    // ממתינה, כך שהכפתור כן יפעל עליו.
+    { id: "81000000-0000-4000-8000-000000000004", pluga: null, order_date: dateStr(D0), item: "שולחנות מתקפלים", quantity: 5, notes: "נוצר אוטומטית ממעקב חוסרי מחסן", status: "ממתין", auto_generated: true, destination_warehouse: null, ...stamp },
     // הזמנה שכבר התקבלה ונכנסה למחסן בפועל — מדגים את destination_warehouse.
-    { id: "81000000-0000-4000-8000-000000000005", pluga: "רמון", order_date: dateStr(D2), item: "שקיות זבל", quantity: 20, notes: null, status: "התקבל", auto_generated: false, destination_warehouse: "מחסן קרביץ", ...stamp },
-  ];
-
-  // Playbox stock/reorder-point tracking (see
-  // supabase/migrations/0008_playbox_stock_tracking.sql). "נייר טואלט" for
-  // בשור is short with no pending auto order yet, so it's the one the demo
-  // "צור הזמנות לחוסרים" button should actually act on; "מגבונים" for פארן
-  // is short too but already has a pending auto-generated order above, so
-  // the button should skip it instead of duplicating it.
-  const playbox_items = [
-    { id: "83000000-0000-4000-8000-000000000001", pluga: "פארן", item: "נייר טואלט", target_quantity: 20, current_quantity: 20, ...stamp },
-    { id: "83000000-0000-4000-8000-000000000002", pluga: "פארן", item: "מגבונים", target_quantity: 20, current_quantity: 5, ...stamp },
-    { id: "83000000-0000-4000-8000-000000000003", pluga: "בשור", item: "נייר טואלט", target_quantity: 15, current_quantity: 2, ...stamp },
-    { id: "83000000-0000-4000-8000-000000000004", pluga: "בשור", item: "סמרטוטים", target_quantity: 10, current_quantity: 10, ...stamp },
+    { id: "81000000-0000-4000-8000-000000000005", pluga: null, order_date: dateStr(D2), item: "שקיות זבל", quantity: 20, notes: null, status: "התקבל", auto_generated: false, destination_warehouse: "מחסן קרביץ", ...stamp },
   ];
 
   const meal_regulators = [
@@ -370,6 +364,5 @@ export function buildFixtures() {
     user_permissions,
     playbox_orders,
     meal_regulators,
-    playbox_items,
   };
 }

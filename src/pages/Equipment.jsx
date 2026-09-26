@@ -14,6 +14,7 @@ import EquipmentSettingsDialog from "@/components/equipment/EquipmentSettingsDia
 import PendingWithdrawals from "@/components/equipment/PendingWithdrawals";
 import MyWithdrawalRequests from "@/components/equipment/MyWithdrawalRequests";
 import ReturnConfirmDialog from "@/components/equipment/ReturnConfirmDialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { WAREHOUSES, toDateStr } from "@/lib/constants";
 import { hasPermission, effectivePermissions } from "@/lib/permissions";
 
@@ -36,6 +37,10 @@ export default function Equipment() {
   const [returnTarget, setReturnTarget] = useState(null);
   const [returnSaving, setReturnSaving] = useState(false);
   const [generatingOrders, setGeneratingOrders] = useState(false);
+  // Non-null while the confirm-before-creating dialog is open — the exact
+  // {item, quantity, warehouse} rows handleConfirmShortageOrders is about to
+  // create (already deduped against pending auto orders).
+  const [confirmShortages, setConfirmShortages] = useState(null);
 
   const loadData = useCallback(async () => {
     const [settingsData, itemsData, holdingsData] = await Promise.all([
@@ -161,7 +166,12 @@ export default function Equipment() {
   // shortage-to-order flow: an auto order already pending for this item from
   // anywhere already covers this shared-warehouse shortage, regardless of
   // which warehouse it was found short in.
-  const handleGenerateShortageOrders = async () => {
+  //
+  // Two-step, same pattern as Playbox.jsx's own gap-order button: this
+  // computes exactly what WOULD be created (already deduped) and opens a
+  // confirm dialog listing it; nothing is actually created until
+  // handleConfirmShortageOrders below runs.
+  const handleOpenShortageConfirm = async () => {
     setGeneratingOrders(true);
     try {
       const shortages = items.filter(
@@ -174,25 +184,38 @@ export default function Equipment() {
       const existingOrders = await base44.entities.PlayboxOrder.list("-order_date", 500);
       const hasPendingAuto = (name) =>
         existingOrders.some((o) => o.item === name && o.auto_generated && (o.status === "ממתין" || o.status === "הוזמן"));
+      const toCreate = shortages
+        .filter((it) => !hasPendingAuto(it.name))
+        .map((it) => ({ item: it.name, quantity: Number(it.target_quantity) - Number(it.quantity), warehouse: it.warehouse }));
+      if (toCreate.length === 0) {
+        toast({ title: "כל החוסרים כבר הוזמנו", description: "יש הזמנה אוטומטית ממתינה לכל חוסר קיים", duration: 2500 });
+        return;
+      }
+      setConfirmShortages(toCreate);
+    } catch (err) {
+      toast({ variant: "destructive", title: "שגיאה בבדיקת החוסרים", description: err.message });
+    } finally {
+      setGeneratingOrders(false);
+    }
+  };
+
+  const handleConfirmShortageOrders = async () => {
+    if (!confirmShortages) return;
+    setGeneratingOrders(true);
+    try {
       const today = toDateStr(new Date());
-      let created = 0;
-      for (const it of shortages) {
-        if (hasPendingAuto(it.name)) continue;
+      for (const s of confirmShortages) {
         await base44.entities.PlayboxOrder.create({
           order_date: today,
-          item: it.name,
-          quantity: Number(it.target_quantity) - Number(it.quantity),
+          item: s.item,
+          quantity: s.quantity,
           notes: "נוצר אוטומטית ממעקב חוסרי מחסן",
           status: "ממתין",
           auto_generated: true,
         });
-        created += 1;
       }
-      if (created === 0) {
-        toast({ title: "כל החוסרים כבר הוזמנו", description: "יש הזמנה אוטומטית ממתינה לכל חוסר קיים", duration: 2500 });
-      } else {
-        toast({ title: `נוצרו ${created} הזמנות לחוסרים`, description: "אפשר לראות ולהזמין בפועל בעמוד הפלייבוקס", duration: 3000 });
-      }
+      toast({ title: `נוצרו ${confirmShortages.length} הזמנות לחוסרים`, description: "אפשר לראות ולהזמין בפועל בעמוד הפלייבוקס", duration: 3000 });
+      setConfirmShortages(null);
     } catch (err) {
       toast({ variant: "destructive", title: "שגיאה ביצירת הזמנות", description: err.message });
     } finally {
@@ -319,7 +342,7 @@ export default function Equipment() {
 
       {canSetTargets && (
         <Button
-          onClick={handleGenerateShortageOrders}
+          onClick={handleOpenShortageConfirm}
           disabled={generatingOrders}
           className="w-full gap-1.5"
           variant={shortageCount > 0 ? "default" : "outline"}
@@ -328,6 +351,47 @@ export default function Equipment() {
           צור הזמנות בפלייבוקס לכל החוסרים{shortageCount > 0 ? ` (${shortageCount})` : ""}
         </Button>
       )}
+
+      <Dialog open={!!confirmShortages} onOpenChange={(o) => !o && setConfirmShortages(null)}>
+        <DialogContent className="sm:max-w-[420px]" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>יצירת הזמנות לחוסרים</DialogTitle>
+          </DialogHeader>
+          {confirmShortages && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                ייווצרו {confirmShortages.length} בקשות הזמנה חדשות בפלייבוקס:
+              </p>
+              <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
+                {confirmShortages.map((s, i) => (
+                  <div key={i} className="flex items-center justify-between gap-2 text-sm border border-border rounded-lg p-2.5 bg-white flex-wrap">
+                    <div>
+                      <p className="font-medium">{s.item}</p>
+                      <p className="text-xs text-muted-foreground">{s.warehouse}</p>
+                    </div>
+                    <span className="text-xs text-muted-foreground">× {s.quantity}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmShortages(null)} disabled={generatingOrders}>
+              ביטול
+            </Button>
+            <Button onClick={handleConfirmShortageOrders} disabled={generatingOrders}>
+              {generatingOrders ? (
+                <>
+                  <Loader2 className="w-4 h-4 ml-2 animate-spin" />
+                  יוצר...
+                </>
+              ) : (
+                `אשר ויצירת ${confirmShortages?.length ?? ""} הזמנות`
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
         {WAREHOUSES.map((w) => (
