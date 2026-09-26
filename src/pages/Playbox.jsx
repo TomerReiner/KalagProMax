@@ -25,13 +25,19 @@ const STATUS_BADGE_STYLE = {
   "בוטל": "bg-red-100 text-red-600",
 };
 
-// Formats the pending orders as one plain-text block, ready to paste
-// anywhere (WhatsApp, an email, ...). Used both here (all pending orders at
-// once) and by WithdrawalForm.jsx (just the completion order(s) it created)
-// — same convention, kept in sync manually since there's no shared
-// UI-utility module yet for the two pages to import from.
+// One order as a single plain-text line, ready to paste anywhere (WhatsApp,
+// an email, ...). Used both for the per-order copy button below and, joined
+// into a bulleted block, for the "copy all pending" button.
+function formatOneOrderAsText(order) {
+  return `${order.item} × ${order.quantity} (${order.pluga})${order.notes ? ` - ${order.notes}` : ""}`;
+}
+
+// Formats several orders as one plain-text block. Used both here (all
+// pending orders at once) and by WithdrawalForm.jsx (just the completion
+// order(s) it created) — same convention, kept in sync manually since
+// there's no shared UI-utility module yet for the two pages to import from.
 function formatOrdersAsText(orders) {
-  const lines = orders.map((o) => `• ${o.item} × ${o.quantity} (${o.pluga})${o.notes ? ` - ${o.notes}` : ""}`);
+  const lines = orders.map((o) => `• ${formatOneOrderAsText(o)}`);
   return `הזמנות פלייבוקס ממתינות (${orders.length}):\n${lines.join("\n")}`;
 }
 
@@ -226,6 +232,11 @@ function PlayboxOrders() {
     }
   };
 
+  const handleCopyOrder = (order) => {
+    navigator.clipboard?.writeText(formatOneOrderAsText(order));
+    toast({ title: "ההזמנה הועתקה", duration: 1500 });
+  };
+
   // Only "ממתין" — these are the ones nobody has actually placed on
   // Playbox's site yet, which is the whole reason to relay the list; an
   // already-"הוזמן" order doesn't need re-sharing.
@@ -326,6 +337,9 @@ function PlayboxOrders() {
                     {Object.keys(STATUS_LABELS).map((s) => <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleCopyOrder(o)} title="העתק הזמנה">
+                  <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+                </Button>
                 <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleDelete(o)}>
                   <Trash2 className="w-3.5 h-3.5 text-destructive" />
                 </Button>

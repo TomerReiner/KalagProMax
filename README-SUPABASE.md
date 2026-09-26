@@ -177,7 +177,11 @@ checklist — do these steps in order.
   The same copy mechanism was added more generally to `Playbox.jsx`'s
   "הזמנות" tab too — "העתק הזמנות ממתינות כטקסט" formats every currently-
   "ממתין" order (not yet actually placed) as one block of text, for relaying
-  the whole list at once rather than one shortage at a time.
+  the whole list at once rather than one shortage at a time. Each individual
+  order row there also has its own small copy button (regardless of its
+  status), for relaying just that one order on its own; both buttons share
+  the same one-line-per-order text format (`formatOneOrderAsText` /
+  `formatOrdersAsText` in `Playbox.jsx`).
 - The 3 Base44 backend functions became Vercel serverless functions under
   `/api`, plus a 4th (`/api/invite-user.js`) that replaces
   `base44.users.inviteUser` (admin invites need the service-role key, which
