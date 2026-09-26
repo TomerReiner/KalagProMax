@@ -104,8 +104,25 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
       });
       setContactForm({ name: "", phone: "", role_label: "" });
       await loadExtras();
+    } catch (err) {
+      // Without this, a failed create (e.g. a network hiccup) would look
+      // exactly like a successful one — the fields would just sit there —
+      // which is how "the contact doesn't really get saved" goes unnoticed.
+      window.alert("שגיאה בהוספת איש הקשר: " + (err?.message || "שגיאה לא ידועה"));
     } finally {
       setSavingContact(false);
+    }
+  };
+
+  // Contact-form inputs live inside the outer <form onSubmit={handleSubmit}>
+  // (the whole dialog is one form). Without this, pressing Enter while
+  // typing a name/phone here — the natural instinct — submits and closes
+  // the ENTIRE event form instead of adding the contact, so it never
+  // actually gets saved. This intercepts Enter and adds the contact instead.
+  const handleContactKeyDown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleAddContact();
     }
   };
 
@@ -413,13 +430,16 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
                     <Input
                       value={contactForm.name}
                       onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                      onKeyDown={handleContactKeyDown}
                       placeholder="שם"
                     />
                   </div>
                   <div className="space-y-1 flex-1 min-w-[100px]">
                     <Input
+                      type="tel"
                       value={contactForm.phone}
                       onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
+                      onKeyDown={handleContactKeyDown}
                       placeholder="טלפון"
                     />
                   </div>
@@ -427,6 +447,7 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
                     <Input
                       value={contactForm.role_label}
                       onChange={(e) => setContactForm({ ...contactForm, role_label: e.target.value })}
+                      onKeyDown={handleContactKeyDown}
                       placeholder="תפקיד (אופציונלי)"
                     />
                   </div>

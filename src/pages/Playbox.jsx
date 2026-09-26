@@ -4,13 +4,26 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Loader2, Truck, Plus, Trash2, Shield, PackageSearch, Sparkles } from "lucide-react";
-import { PLUGOT, PLUGA_COLORS, toDateStr } from "@/lib/constants";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Loader2, Truck, Plus, Trash2, Shield, PackageSearch, Sparkles, PackageCheck, Warehouse } from "lucide-react";
+import { PLUGOT, PLUGA_COLORS, WAREHOUSES, toDateStr } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import { hasPermission, effectivePermissions } from "@/lib/permissions";
 
-const STATUS_LABELS = { "ממתין": "ממתין", "הוזמן": "הוזמן", "בוטל": "בוטל" };
+// "התקבל" (received) is deliberately separate from "הוזמן" (ordered) — see
+// supabase/migrations/0009_playbox_orders_received_status.sql. Placing the
+// order and it actually arriving are two different events; only the second
+// one should credit the item back into stock (handleReceive below), so
+// folding them into one status would either credit stock too early or need
+// a second signal anyway.
+const STATUS_LABELS = { "ממתין": "ממתין", "הוזמן": "הוזמן", "התקבל": "התקבל", "בוטל": "בוטל" };
+const STATUS_BADGE_STYLE = {
+  "ממתין": "bg-slate-100 text-slate-600",
+  "הוזמן": "bg-blue-100 text-blue-700",
+  "התקבל": "bg-green-100 text-green-700",
+  "בוטל": "bg-red-100 text-red-600",
+};
 
 // Standalone page for the playbox_orders delegated permission (see
 // src/lib/permissions.js and supabase/migrations/0005_delegated_permissions.sql).
@@ -89,6 +102,10 @@ function PlayboxOrders() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ pluga: PLUGOT[0], order_date: toDateStr(new Date()), item: "", quantity: 1, notes: "" });
   const [saving, setSaving] = useState(false);
+  // Order awaiting a destination-warehouse choice before it's actually
+  // marked "התקבל" — see handleChooseDestination / the dialog at the bottom
+  // of this component's render.
+  const [receivingOrder, setReceivingOrder] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -130,12 +147,63 @@ function PlayboxOrders() {
     }
   };
 
+  // Every path into "התקבל" (the dedicated button, or picking it in the
+  // status dropdown) opens the destination-warehouse dialog instead of
+  // applying immediately — receiving isn't complete until we know which
+  // physical warehouse the goods went into (see handleConfirmReceive).
+  // Any other status change applies right away.
   const handleStatus = async (order, status) => {
+    if (status === "התקבל" && order.status !== "התקבל") {
+      setReceivingOrder(order);
+      return;
+    }
     try {
       await base44.entities.PlayboxOrder.update(order.id, { status });
       await load();
     } catch (err) {
       toast({ title: "שגיאה בעדכון הסטטוס", description: err.message, variant: "destructive" });
+    }
+  };
+
+  // Marking an order "התקבל" is a separate, explicit step from "הוזמן" (see
+  // supabase/migrations/0009_playbox_orders_received_status.sql) — placing
+  // the order and it actually showing up are two different events. Once a
+  // destination warehouse is chosen (see the dialog below), receiving an
+  // order credits TWO places: the matching pluga-level stock item's "יש
+  // כרגע" (so the stock tab reflects the shortage being filled — silently
+  // skipped if no playbox_items row matches this pluga+item, e.g. an ad-hoc
+  // order that was never tracked as a stock item), and the chosen physical
+  // warehouse's warehouse_items quantity (see
+  // supabase/migrations/0010_playbox_orders_destination_warehouse.sql), so
+  // the goods actually show up in "משיכות ציוד" — creating that warehouse
+  // item if it doesn't exist there yet.
+  const handleConfirmReceive = async (warehouse) => {
+    const order = receivingOrder;
+    if (!order) return;
+    setReceivingOrder(null);
+    try {
+      await base44.entities.PlayboxOrder.update(order.id, { status: "התקבל", destination_warehouse: warehouse });
+
+      const stockMatches = await base44.entities.PlayboxItem.filter({ pluga: order.pluga, item: order.item });
+      if (stockMatches.length > 0) {
+        const it = stockMatches[0];
+        await base44.entities.PlayboxItem.update(it.id, {
+          current_quantity: Number(it.current_quantity) + Number(order.quantity),
+        });
+      }
+
+      const warehouseMatches = await base44.entities.WarehouseItem.filter({ warehouse, name: order.item });
+      if (warehouseMatches.length > 0) {
+        const wi = warehouseMatches[0];
+        await base44.entities.WarehouseItem.update(wi.id, { quantity: Number(wi.quantity) + Number(order.quantity) });
+      } else {
+        await base44.entities.WarehouseItem.create({ warehouse, name: order.item, quantity: Number(order.quantity), returnable: false });
+      }
+
+      await load();
+      toast({ title: "ההזמנה סומנה כהתקבלה", description: `"${order.item}" נוסף ל${warehouse} ועודכן במלאי הפלוגה`, duration: 3000 });
+    } catch (err) {
+      toast({ title: "שגיאה בסימון כהתקבל", description: err.message, variant: "destructive" });
     }
   };
 
@@ -191,11 +259,27 @@ function PlayboxOrders() {
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">{o.order_date}{o.notes ? ` · ${o.notes}` : ""}</p>
+                <p className="text-xs text-muted-foreground">
+                  {o.order_date}{o.notes ? ` · ${o.notes}` : ""}
+                  {o.status === "התקבל" && o.destination_warehouse && ` · התקבל ל${o.destination_warehouse}`}
+                </p>
               </div>
-              <div className="flex items-center gap-1.5 shrink-0">
+              <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                {o.status === "הוזמן" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setReceivingOrder(o)}
+                    className="h-8 gap-1 text-xs border-green-300 text-green-700 hover:bg-green-50"
+                  >
+                    <PackageCheck className="w-3.5 h-3.5" />
+                    התקבל
+                  </Button>
+                )}
                 <Select value={o.status} onValueChange={(v) => handleStatus(o, v)}>
-                  <SelectTrigger className="h-8 text-xs w-24"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className={cn("h-8 text-xs w-24 border-0", STATUS_BADGE_STYLE[o.status])}>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     {Object.keys(STATUS_LABELS).map((s) => <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>)}
                   </SelectContent>
@@ -208,6 +292,33 @@ function PlayboxOrders() {
           ))}
         </div>
       )}
+
+      <Dialog open={!!receivingOrder} onOpenChange={(o) => !o && setReceivingOrder(null)}>
+        <DialogContent className="sm:max-w-[380px]" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>לאן ההזמנה הולכת?</DialogTitle>
+          </DialogHeader>
+          {receivingOrder && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                "{receivingOrder.item}" × {receivingOrder.quantity} ({receivingOrder.pluga}) — לאיזה מחסן זה מגיע?
+              </p>
+              <div className="space-y-2">
+                {WAREHOUSES.map((w) => (
+                  <button
+                    key={w}
+                    onClick={() => handleConfirmReceive(w)}
+                    className="w-full flex items-center gap-2 border rounded-lg p-3 text-sm font-medium hover:bg-slate-50 transition-colors"
+                  >
+                    <Warehouse className="w-4 h-4 text-slate-500 shrink-0" />
+                    {w}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -307,10 +418,13 @@ function PlayboxStock() {
         return;
       }
       // Avoid piling up duplicate auto-generated orders for the same
-      // pluga+item while an earlier one is still pending.
+      // pluga+item while an earlier one is still active (not yet received
+      // or cancelled) — "ממתין" and "הוזמן" both mean it's still in flight.
       const existingOrders = await base44.entities.PlayboxOrder.list("-order_date", 500);
       const hasPendingAuto = (pluga, item) =>
-        existingOrders.some((o) => o.pluga === pluga && o.item === item && o.auto_generated && o.status === "ממתין");
+        existingOrders.some(
+          (o) => o.pluga === pluga && o.item === item && o.auto_generated && (o.status === "ממתין" || o.status === "הוזמן")
+        );
 
       const today = toDateStr(new Date());
       let created = 0;

@@ -313,12 +313,14 @@ export function buildFixtures() {
   ];
 
   const playbox_orders = [
-    { id: "81000000-0000-4000-8000-000000000001", pluga: "פארן", order_date: dateStr(D1), item: "חטיפים", quantity: 10, notes: null, status: "ממתין", auto_generated: false, ...stamp },
-    { id: "81000000-0000-4000-8000-000000000002", pluga: "בשור", order_date: dateStr(D2), item: "שתייה קלה", quantity: 24, notes: "לאירוע יום שלישי", status: "הוזמן", auto_generated: false, ...stamp },
-    { id: "81000000-0000-4000-8000-000000000003", pluga: "צין", order_date: dateStr(D0), item: "עוגות", quantity: 3, notes: null, status: "בוטל", auto_generated: false, ...stamp },
+    { id: "81000000-0000-4000-8000-000000000001", pluga: "פארן", order_date: dateStr(D1), item: "חטיפים", quantity: 10, notes: null, status: "ממתין", auto_generated: false, destination_warehouse: null, ...stamp },
+    { id: "81000000-0000-4000-8000-000000000002", pluga: "בשור", order_date: dateStr(D2), item: "שתייה קלה", quantity: 24, notes: "לאירוע יום שלישי", status: "הוזמן", auto_generated: false, destination_warehouse: null, ...stamp },
+    { id: "81000000-0000-4000-8000-000000000003", pluga: "צין", order_date: dateStr(D0), item: "עוגות", quantity: 3, notes: null, status: "בוטל", auto_generated: false, destination_warehouse: null, ...stamp },
     // חוסר קיים שכבר קיבל הזמנה אוטומטית ממתינה — מדגים את מניעת הכפילות
     // ב"צור הזמנות לחוסרים" (ר' playbox_items למטה: פארן/מגבונים 5 מתוך 20).
-    { id: "81000000-0000-4000-8000-000000000004", pluga: "פארן", order_date: dateStr(D0), item: "מגבונים", quantity: 15, notes: "נוצר אוטומטית ממעקב המלאי", status: "ממתין", auto_generated: true, ...stamp },
+    { id: "81000000-0000-4000-8000-000000000004", pluga: "פארן", order_date: dateStr(D0), item: "מגבונים", quantity: 15, notes: "נוצר אוטומטית ממעקב המלאי", status: "ממתין", auto_generated: true, destination_warehouse: null, ...stamp },
+    // הזמנה שכבר התקבלה ונכנסה למחסן בפועל — מדגים את destination_warehouse.
+    { id: "81000000-0000-4000-8000-000000000005", pluga: "רמון", order_date: dateStr(D2), item: "שקיות זבל", quantity: 20, notes: null, status: "התקבל", auto_generated: false, destination_warehouse: "מחסן קרביץ", ...stamp },
   ];
 
   // Playbox stock/reorder-point tracking (see

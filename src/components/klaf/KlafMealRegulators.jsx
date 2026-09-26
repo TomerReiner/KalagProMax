@@ -75,7 +75,13 @@ export default function KlafMealRegulators({ pluga, dateStr }) {
       {loading ? (
         <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
       ) : (
-        <div className="grid sm:grid-cols-2 gap-3">
+        // Always stacked, never a 2-column grid here: this component is
+        // already nested inside MealRegulatorsBreakdown's own per-pluga grid
+        // (Klaf.jsx), so splitting into columns again quartered the width
+        // available to each card — squeezing the entry row's inputs down to
+        // near-unusable even on a full desktop screen. One column keeps each
+        // meal-type card at the pluga card's full width.
+        <div className="space-y-3">
           {MEAL_TYPES.map((mealType) => {
             const regulators = regulatorsFor(mealType);
             const entry = newEntry[mealType] || EMPTY_FORM;
@@ -101,25 +107,33 @@ export default function KlafMealRegulators({ pluga, dateStr }) {
                     </div>
                   ))}
                 </div>
-                <div className="space-y-1.5">
-                  <Input
-                    placeholder="שם"
-                    value={entry.name}
-                    onChange={(e) => setNewEntry((n) => ({ ...n, [mealType]: { ...entry, name: e.target.value } }))}
-                    onKeyDown={(e) => { if (e.key === "Enter") addRegulator(mealType); }}
-                    className="h-8 text-sm"
-                  />
-                  <div className="flex gap-1.5">
+                <div className="space-y-1">
+                  <p className="text-[10px] text-muted-foreground">שם ומספר טלפון (הטלפון אופציונלי)</p>
+                  {/* flex + min-width instead of a fixed 3-column grid: with
+                      enough room (the common case, now that the card above
+                      isn't quartered anymore) name+phone+button sit on one
+                      row exactly as asked for, but neither input is ever
+                      forced to shrink below a usable width — if the card is
+                      genuinely narrow, the row wraps instead of squeezing. */}
+                  <div className="flex flex-wrap gap-1.5">
+                    <Input
+                      placeholder="שם"
+                      value={entry.name}
+                      onChange={(e) => setNewEntry((n) => ({ ...n, [mealType]: { ...entry, name: e.target.value } }))}
+                      onKeyDown={(e) => { if (e.key === "Enter") addRegulator(mealType); }}
+                      className="h-10 text-sm flex-1 min-w-[110px]"
+                    />
                     <Input
                       type="tel"
-                      placeholder="טלפון (אופציונלי)"
+                      inputMode="tel"
+                      placeholder="מספר טלפון"
                       value={entry.phone}
                       onChange={(e) => setNewEntry((n) => ({ ...n, [mealType]: { ...entry, phone: e.target.value } }))}
                       onKeyDown={(e) => { if (e.key === "Enter") addRegulator(mealType); }}
-                      className="h-8 text-sm flex-1"
+                      className="h-10 text-sm flex-1 min-w-[130px]"
                     />
-                    <Button size="sm" variant="outline" onClick={() => addRegulator(mealType)} className="shrink-0">
-                      <Plus className="w-3.5 h-3.5" />
+                    <Button size="icon" variant="outline" onClick={() => addRegulator(mealType)} className="h-10 w-10 shrink-0">
+                      <Plus className="w-4 h-4" />
                     </Button>
                   </div>
                 </div>

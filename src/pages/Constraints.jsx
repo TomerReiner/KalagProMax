@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, ChevronRight, ChevronLeft, CalendarRange, Repeat, ClipboardCheck } from "lucide-react";
+import { Loader2, Plus, ChevronRight, ChevronLeft, CalendarRange, Repeat, ClipboardCheck, Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -710,12 +710,14 @@ export default function Constraints() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setViewConstraint(null)}>סגור</Button>
+            <Button variant="ghost" onClick={() => setViewConstraint(null)}>סגור</Button>
             <Button
-              variant="secondary"
+              variant="outline"
+              className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
               onClick={() => viewConstraint && openEdit(viewConstraint)}
             >
-              עריכה
+              <Pencil className="w-4 h-4" />
+              עריכת אילוץ
             </Button>
             <Button
               variant="destructive"

@@ -1,5 +1,11 @@
 export const PLUGOT = ["פארן", "בשור", "צין", "רמון", "תמר"];
 
+// The 3 physical equipment warehouses (src/pages/Equipment.jsx). Exported
+// from here (rather than kept as a local const in Equipment.jsx, as it used
+// to be) so Playbox.jsx can offer the same 3 destinations when marking an
+// order "התקבל" — see supabase/migrations/0010_playbox_orders_destination_warehouse.sql.
+export const WAREHOUSES = ["מכולה", "מחסן קרביץ", "מחסן לוגיסטי"];
+
 export const LOCATIONS = [
   "מגורים כללי",
   "מגורי בנים",

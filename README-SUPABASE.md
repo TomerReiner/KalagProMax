@@ -52,10 +52,35 @@ checklist — do these steps in order.
 - `supabase/migrations/0008_playbox_stock_tracking.sql` adds Playbox
   stock/reorder-point tracking (`playbox_items` + `playbox_orders
   .auto_generated`) — see the dedicated section below.
+- `supabase/migrations/0009_playbox_orders_received_status.sql` adds
+  "התקבל" (received) as its own `playbox_orders.status` value, separate from
+  "הוזמן" (ordered) — see the dedicated section below.
+- `supabase/migrations/0010_playbox_orders_destination_warehouse.sql` adds
+  `playbox_orders.destination_warehouse` — see the dedicated section below.
+- `src/lib/constants.js` now exports `WAREHOUSES` (the 3 physical
+  warehouses: מכולה / מחסן קרביץ / מחסן לוגיסטי), moved there from a local
+  const in `src/pages/Equipment.jsx` so `src/pages/Playbox.jsx` can offer the
+  same 3 destinations. No behavior change for Equipment itself.
 - General tasks (`src/pages/Tasks.jsx`, the backlog list) got a straight
   "סיים משימה" (finish task) button instead of picking a date and assigning
   it to a day first — most of these just need to be marked done, not
   scheduled.
+- Fixed two bugs: event contact-person inputs (in the "עריכת אירוע" dialog)
+  sat inside the outer event `<form>`, so pressing Enter while typing a
+  name/phone submitted and closed the whole dialog instead of adding the
+  contact — it never actually got saved. Pressing Enter in those fields now
+  adds the contact instead. Also gave the "עריכת אילוץ" button its own
+  outlined, icon-labeled style instead of the same muted look as "סגור", so
+  it reads as an action rather than blending into the dialog chrome.
+- The meal-regulators name+phone entry row (`KlafMealRegulators.jsx`) was
+  still cramped on a full desktop screen because the component was nested
+  inside two 2-column grids at once (per-pluga breakdown, then per-meal-type
+  inside it), quartering its real width regardless of viewport size. The
+  per-meal-type grid is now always a single column (removing one level of
+  nesting), and the entry row uses a wrapping flex layout with minimum input
+  widths instead of a fixed 3-column grid — name+phone+button share one row
+  when there's room (the common case now) and wrap instead of shrinking to
+  unusable widths when there isn't.
 - The 3 Base44 backend functions became Vercel serverless functions under
   `/api`, plus a 4th (`/api/invite-user.js`) that replaces
   `base44.users.inviteUser` (admin invites need the service-role key, which
@@ -101,9 +126,14 @@ to the next):
    from the old `names` array.
 9. `supabase/migrations/0008_playbox_stock_tracking.sql` — safe/idempotent,
    adds `playbox_items` and `playbox_orders.auto_generated`.
+10. `supabase/migrations/0009_playbox_orders_received_status.sql` —
+    safe/idempotent, adds "התקבל" to the allowed `playbox_orders.status`
+    values.
+11. `supabase/migrations/0010_playbox_orders_destination_warehouse.sql` —
+    safe/idempotent, adds `playbox_orders.destination_warehouse`.
 
 (Or, if you use the Supabase CLI: `supabase db push` after `supabase link` —
-it will pick up all nine in filename order.)
+it will pick up all eleven in filename order.)
 
 ## 2. Turn on email-OTP signup (only if you'll use the Register page)
 
@@ -224,8 +254,27 @@ was folded into wherever it naturally belongs in the app instead:
   one *does* get its own page — `src/pages/Playbox.jsx` at `/playbox` —
   since it's a focused, single-purpose screen rather than a grab-bag of
   unrelated tabs. The page has two tabs:
-  - **הזמנות** — the original manual order log (unchanged): pick a pluga,
-    item, quantity and optional notes, track status (ממתין/הוזמן/בוטל).
+  - **הזמנות** — the original manual order log, pick a pluga, item, quantity
+    and optional notes, track status: `ממתין` → `הוזמן` → `התקבל`, or
+    `בוטל`. "התקבל" (received) is deliberately its own status rather than
+    folded into "הוזמן"
+    (`supabase/migrations/0009_playbox_orders_received_status.sql`) —
+    placing the real order and it actually showing up are two different
+    events. An order with status `הוזמן` gets a dedicated green "התקבל"
+    button (in addition to the status dropdown, for anyone who prefers
+    that); either one opens a small "לאן ההזמנה הולכת?" dialog asking which
+    of the 3 physical warehouses (`WAREHOUSES` in `src/lib/constants.js` —
+    the same מכולה / מחסן קרביץ / מחסן לוגיסטי as `/equipment`) the goods
+    actually went into
+    (`supabase/migrations/0010_playbox_orders_destination_warehouse.sql`,
+    `playbox_orders.destination_warehouse`). Confirming a warehouse credits
+    **two** places: the matching `playbox_items.current_quantity` below (so
+    the stock tab reflects the shortage being filled — silently skipped if
+    no stock item matches that pluga+item, e.g. an ad-hoc order that was
+    never tracked as a stock item), and that warehouse's own
+    `warehouse_items` quantity on `/equipment` — creating the item there if
+    it doesn't already exist — so equipment received via Playbox actually
+    shows up in "משיכות ציוד", not just as a closed order here.
   - **מלאי ומעקב חוסרים** — stock/reorder-point tracking added in
     `supabase/migrations/0008_playbox_stock_tracking.sql` (`playbox_items`:
     `pluga`, `item`, `target_quantity`, `current_quantity`, unique per
@@ -238,7 +287,9 @@ was folded into wherever it naturally belongs in the app instead:
     up in the "הזמנות" tab with an "אוטומטי" badge for the same person to
     place for real — the button never places an order itself, it only drafts
     the request. Pressing it again doesn't pile up duplicates: it skips any
-    pluga+item that already has a pending (`ממתין`) auto-generated order.
+    pluga+item that already has an active (`ממתין` or `הוזמן`) auto-generated
+    order — marking that order `התקבל` (crediting the stock back, above) or
+    `בוטל` frees it up to generate a new one next time.
 
 **"משיכת מזון לנסיעות" turned out not to need a permission or a table at
 all.** It's just a checkbox on the event form itself

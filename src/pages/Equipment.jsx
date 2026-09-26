@@ -14,8 +14,7 @@ import EquipmentSettingsDialog from "@/components/equipment/EquipmentSettingsDia
 import PendingWithdrawals from "@/components/equipment/PendingWithdrawals";
 import MyWithdrawalRequests from "@/components/equipment/MyWithdrawalRequests";
 import ReturnConfirmDialog from "@/components/equipment/ReturnConfirmDialog";
-
-const WAREHOUSES = ["מכולה", "מחסן קרביץ", "מחסן לוגיסטי"];
+import { WAREHOUSES } from "@/lib/constants";
 
 export default function Equipment() {
   const { toast } = useToast();
