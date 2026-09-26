@@ -194,7 +194,12 @@ export default function Klaf() {
             <SelectTrigger className="w-[180px] mx-auto"><SelectValue placeholder="בחר פלוגה לתצוגה" /></SelectTrigger>
             <SelectContent>
               {PLUGOT.map((p) => (
-                <SelectItem key={p} value={p}>{p}</SelectItem>
+                <SelectItem key={p} value={p}>
+                  <span className="flex items-center gap-2">
+                    <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p]?.dot)} />
+                    {p}
+                  </span>
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -374,7 +379,12 @@ export default function Klaf() {
               <SelectTrigger className="w-[150px] h-8"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {PLUGOT.map((p) => (
-                  <SelectItem key={p} value={p}>{p}</SelectItem>
+                  <SelectItem key={p} value={p}>
+                    <span className="flex items-center gap-2">
+                      <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p]?.dot)} />
+                      {p}
+                    </span>
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>

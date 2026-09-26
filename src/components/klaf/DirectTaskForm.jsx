@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PLUGOT, toDateStr } from "@/lib/constants";
+import { PLUGOT, PLUGA_COLORS, toDateStr } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import TimeInput from "@/components/TimeInput";
 
 export default function DirectTaskForm({ open, onClose, onSubmit, defaultPluga, defaultDate }) {
@@ -70,7 +71,12 @@ export default function DirectTaskForm({ open, onClose, onSubmit, defaultPluga, 
               <SelectTrigger><SelectValue placeholder="בחר פלוגה" /></SelectTrigger>
               <SelectContent>
                 {PLUGOT.map((p) => (
-                  <SelectItem key={p} value={p}>{p}</SelectItem>
+                  <SelectItem key={p} value={p}>
+                    <span className="flex items-center gap-2">
+                      <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p]?.dot)} />
+                      {p}
+                    </span>
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>

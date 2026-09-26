@@ -224,7 +224,14 @@ function PlayboxOrders() {
           <Select value={form.pluga} onValueChange={(v) => setForm((f) => ({ ...f, pluga: v }))}>
             <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
-              {PLUGOT.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+              {PLUGOT.map((p) => (
+                <SelectItem key={p} value={p}>
+                  <span className="flex items-center gap-2">
+                    <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p]?.dot)} />
+                    {p}
+                  </span>
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Input type="date" value={form.order_date} onChange={(e) => setForm((f) => ({ ...f, order_date: e.target.value }))} className="h-9 text-sm" />

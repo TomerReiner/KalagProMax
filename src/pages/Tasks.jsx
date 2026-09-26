@@ -381,7 +381,12 @@ export default function Tasks() {
           <SelectContent>
             <SelectItem value="all">כל הפלוגות</SelectItem>
             {PLUGOT.map((p) => (
-              <SelectItem key={p} value={p}>{p}</SelectItem>
+              <SelectItem key={p} value={p}>
+                <span className="flex items-center gap-2">
+                  <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p]?.dot)} />
+                  {p}
+                </span>
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>

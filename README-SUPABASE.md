@@ -65,13 +65,38 @@ checklist — do these steps in order.
   "סיים משימה" (finish task) button instead of picking a date and assigning
   it to a day first — most of these just need to be marked done, not
   scheduled.
-- Fixed two bugs: event contact-person inputs (in the "עריכת אירוע" dialog)
-  sat inside the outer event `<form>`, so pressing Enter while typing a
-  name/phone submitted and closed the whole dialog instead of adding the
-  contact — it never actually got saved. Pressing Enter in those fields now
-  adds the contact instead. Also gave the "עריכת אילוץ" button its own
-  outlined, icon-labeled style instead of the same muted look as "סגור", so
-  it reads as an action rather than blending into the dialog chrome.
+- Fixed event contact-person bugs (the "אנשי קשר" list in "עריכת אירוע",
+  `src/components/constraints/EventForm.jsx`):
+  - The contact inputs sat inside the outer event `<form>`, so pressing Enter
+    while typing a name/phone — the natural instinct — submitted and closed
+    the whole dialog instead of adding the contact, so it never actually got
+    saved. Pressing Enter in those fields now adds the contact instead.
+  - `Constraints.jsx`'s `handleEventSubmit` used to clear `eventEditing` to
+    `null` right after saving, but that state change landed *while the edit
+    dialog was still open* (EventForm's own submit handler was still waiting
+    on it, hadn't called `onClose()` yet) — for one render, EventForm saw
+    `open: true, editing: null`, which its effects read as "now showing a
+    blank new-event form" and reset the local contacts list. `eventEditing`
+    is now cleared once, correctly, in the dialog's actual `onClose` handler.
+  - Contacts were only ever visible inside the edit dialog. Clicking an event
+    on the schedule (the "פרטי אירוע" view dialog) now also loads and shows
+    its contacts — name, role and a tap-to-call phone link — so you don't
+    have to reopen the edit form just to see who to call.
+  - **The actual cause of the repeated "contacts still aren't saved" reports**:
+    the "אנשי קשר" name/phone fields are a *separate*, immediate save —
+    `handleAddContact` calls the API the moment "הוסף" is clicked — they were
+    never part of the main event form's fields and were never sent by
+    "שמור שינויים". Typing a contact's details and then clicking "שמור
+    שינויים" directly (the natural expectation — "save the event" should mean
+    "save everything I just filled in") silently discarded whatever was
+    sitting in those fields, with the dialog just closing right after as if
+    nothing was lost. `handleSubmit` now checks the contact fields before
+    closing: if a complete name+phone is sitting there, it saves it as part
+    of the same "שמור שינויים" click; if only one of the two is filled, it
+    warns instead of silently dropping it.
+  Also gave the "עריכת אילוץ" button its own outlined, icon-labeled style
+  instead of the same muted look as "סגור", so it reads as an action rather
+  than blending into the dialog chrome.
 - The meal-regulators name+phone entry row (`KlafMealRegulators.jsx`) was
   still cramped on a full desktop screen because the component was nested
   inside two 2-column grids at once (per-pluga breakdown, then per-meal-type
@@ -81,6 +106,21 @@ checklist — do these steps in order.
   widths instead of a fixed 3-column grid — name+phone+button share one row
   when there's room (the common case now) and wrap instead of shrinking to
   unusable widths when there isn't.
+- Every pluga-selection control app-wide now shows that pluga's color
+  (`PLUGA_COLORS[p].dot` next to the name in a `<Select>`'s dropdown options,
+  matching the pattern `GapForm.jsx` already used; the existing colored
+  toggle-pill pattern for multi-selects), not just the plain-text options
+  most of them had before: the "פלוגה אחראית"/"פלוגה מבצעת"/"פלוגה" selects in
+  `EventForm.jsx` (transport + food + the "פלוגות אחראיות" pills for internal
+  events), `RecurringEventForm.jsx`, `WithdrawalForm.jsx`, `DirectTaskForm.jsx`,
+  `Playbox.jsx`'s add-order form, `Tasks.jsx`'s pluga filter, `Klaf.jsx`'s two
+  "preview as קלפ" pluga pickers, the שוטף-task quick-edit select and the
+  per-field select in `Shotaf.jsx`, and in `AdminPanel.jsx` the preview-role
+  pluga picker, the pending-request pluga override, the existing-user pluga
+  assignment, and the per-permission scoped-plugot checkbox grid (now with a
+  colored dot per pluga and a tinted background once checked). Already-colored
+  controls (`GapForm.jsx`, `StandaloneTaskForm.jsx`, the constraint-form and
+  event-confirmation pills) were left as they were.
 - The 3 Base44 backend functions became Vercel serverless functions under
   `/api`, plus a 4th (`/api/invite-user.js`) that replaces
   `base44.users.inviteUser` (admin invites need the service-role key, which

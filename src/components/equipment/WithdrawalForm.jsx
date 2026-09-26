@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PLUGOT } from "@/lib/constants";
+import { PLUGOT, PLUGA_COLORS } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import { base44 } from "@/api/base44Client";
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
@@ -138,7 +139,10 @@ export default function WithdrawalForm({ open, onClose, warehouse, items, userPl
                 <SelectContent>
                   {PLUGOT.map((p) => (
                     <SelectItem key={p} value={p}>
-                      {p}
+                      <span className="flex items-center gap-2">
+                        <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p]?.dot)} />
+                        {p}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>

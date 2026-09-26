@@ -85,6 +85,27 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
     if (!form.title || !form.event_date) return;
     setSaving(true);
     try {
+      // The "אנשי קשר" fields below are a separate, immediate save (handleAddContact
+      // calls the API the moment "הוסף" is clicked) — they are not part of `form` and
+      // are never sent by this submit. That's not obvious from the UI: someone who
+      // types a contact's name+phone and then clicks "שמור שינויים" directly (a
+      // completely natural expectation — "save the event" should mean "save
+      // everything I just filled in") had that contact silently discarded, with
+      // the whole dialog closing right after as if nothing was lost. This is what
+      // was actually behind the repeated "contacts aren't saved" reports. If a
+      // complete contact is sitting in the fields when the form is submitted, save
+      // it too before closing; if it's only half-filled, warn instead of dropping it.
+      if (editing?.id) {
+        const hasName = !!contactForm.name.trim();
+        const hasPhone = !!contactForm.phone.trim();
+        if (hasName && hasPhone) {
+          await handleAddContact();
+        } else if (hasName || hasPhone) {
+          window.alert(
+            "שימו לב: פרטי איש הקשר שהתחלתם למלא לא נשמרו כי חסר שם או מספר טלפון (צריך למלא את שניהם, או ללחוץ 'הוסף' בנפרד). ניתן להוסיף אותו שוב בכניסה הבאה לעריכת האירוע."
+          );
+        }
+      }
       await onSubmit(form);
       onClose();
     } finally {
@@ -259,7 +280,12 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
                       <SelectContent>
                         <SelectItem value="none">טרם הוחלט</SelectItem>
                         {PLUGOT.map((p) => (
-                          <SelectItem key={p} value={p}>{p}</SelectItem>
+                          <SelectItem key={p} value={p}>
+                            <span className="flex items-center gap-2">
+                              <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p]?.dot)} />
+                              {p}
+                            </span>
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -288,7 +314,12 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
                       <SelectContent>
                         <SelectItem value="none">טרם הוחלט</SelectItem>
                         {PLUGOT.map((p) => (
-                          <SelectItem key={p} value={p}>{p}</SelectItem>
+                          <SelectItem key={p} value={p}>
+                            <span className="flex items-center gap-2">
+                              <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p]?.dot)} />
+                              {p}
+                            </span>
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -320,21 +351,26 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
             <div className="border-t pt-4 space-y-3">
               <p className="text-sm font-semibold text-slate-700">פלוגות אחראיות</p>
               <div className="flex flex-wrap gap-2">
-                {PLUGOT.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => togglePluga(p)}
-                    className={cn(
-                      "text-xs px-3 py-1.5 rounded-full border transition-colors",
-                      form.responsible_plugas.includes(p)
-                        ? "bg-slate-900 text-white border-slate-900"
-                        : "bg-white text-muted-foreground border-border hover:bg-muted"
-                    )}
-                  >
-                    {p}
-                  </button>
-                ))}
+                {PLUGOT.map((p) => {
+                  const selected = form.responsible_plugas.includes(p);
+                  const color = PLUGA_COLORS[p];
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => togglePluga(p)}
+                      className={cn(
+                        "text-xs px-3 py-1.5 rounded-full border transition-colors flex items-center gap-1.5",
+                        selected
+                          ? cn(color?.bg, color?.text, "border-transparent")
+                          : "bg-white text-muted-foreground border-border hover:bg-muted"
+                      )}
+                    >
+                      <span className={cn("w-2 h-2 rounded-full", !selected && color?.dot)} />
+                      {p}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, ChevronRight, ChevronLeft, CalendarRange, Repeat, ClipboardCheck, Pencil } from "lucide-react";
+import { Loader2, Plus, ChevronRight, ChevronLeft, CalendarRange, Repeat, ClipboardCheck, Pencil, Phone } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,6 +53,8 @@ export default function Constraints() {
   const [eventFormOpen, setEventFormOpen] = useState(false);
   const [eventEditing, setEventEditing] = useState(null);
   const [viewEvent, setViewEvent] = useState(null);
+  const [viewEventContacts, setViewEventContacts] = useState([]);
+  const [viewEventContactsLoading, setViewEventContactsLoading] = useState(false);
   const [recurringEvents, setRecurringEvents] = useState([]);
   const [routines, setRoutines] = useState([]);
   const [recurringOverrides, setRecurringOverrides] = useState([]);
@@ -149,9 +151,17 @@ export default function Constraints() {
   }, [loadRecurring]);
 
   const handleEventSubmit = async (formData) => {
+    // eventEditing is deliberately NOT cleared here. It used to be cleared
+    // right after the update, but that's a state change fired while the
+    // dialog is still open (EventForm's handleSubmit hasn't called onClose
+    // yet — it's still awaiting this very function) — the resulting
+    // re-render passed EventForm an `editing` that had gone from the real
+    // event to null while `open` stayed true, which made its effects treat
+    // it as "dialog now showing a blank new-event form" for a frame and
+    // reset local contacts/confirmations state. It's cleared once, correctly,
+    // in the EventForm's onClose handler below instead.
     if (eventEditing) {
       await base44.entities.Event.update(eventEditing.id, formData);
-      setEventEditing(null);
     } else {
       await base44.entities.Event.create(formData);
     }
@@ -169,6 +179,30 @@ export default function Constraints() {
     setEventEditing(e);
     setEventFormOpen(true);
   };
+
+  // Contacts for the read-only "פרטי אירוע" dialog — so clicking an event on
+  // the schedule shows who to call, not just the fields also editable in the
+  // edit form. Independent of EventForm's own contacts state (that one only
+  // exists while the edit dialog is open).
+  const loadViewEventContacts = useCallback(async (eventId) => {
+    if (!eventId) {
+      setViewEventContacts([]);
+      return;
+    }
+    setViewEventContactsLoading(true);
+    try {
+      const data = await base44.entities.EventContact.filter({ event_id: eventId });
+      setViewEventContacts(data);
+    } catch {
+      setViewEventContacts([]);
+    } finally {
+      setViewEventContactsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadViewEventContacts(viewEvent?.id);
+  }, [viewEvent?.id, loadViewEventContacts]);
 
   const hours = Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => HOUR_START + i);
   const totalHeight = (HOUR_END - HOUR_START) * HOUR_HEIGHT;
@@ -804,6 +838,31 @@ export default function Constraints() {
                   )}
                 </div>
               )}
+              <div className="border-t pt-3 space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-slate-500" />
+                  <p className="text-xs font-semibold text-slate-700">אנשי קשר</p>
+                  {viewEventContactsLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+                </div>
+                {!viewEventContactsLoading && viewEventContacts.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">אין אנשי קשר לאירוע זה</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {viewEventContacts.map((c) => (
+                      <div key={c.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 bg-white flex-wrap">
+                        <p className="text-sm font-medium">
+                          {c.name}
+                          {c.role_label && <span className="text-xs text-muted-foreground"> · {c.role_label}</span>}
+                        </p>
+                        <a href={`tel:${c.phone}`} className="text-xs text-blue-600 flex items-center gap-1 font-medium">
+                          <Phone className="w-3 h-3" />
+                          {c.phone}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
           <DialogFooter>
@@ -913,7 +972,12 @@ export default function Constraints() {
                   <SelectContent>
                     <SelectItem value="טרם הוחלט">טרם הוחלט</SelectItem>
                     {PLUGOT.map((p) => (
-                      <SelectItem key={p} value={p}>{p}</SelectItem>
+                      <SelectItem key={p} value={p}>
+                        <span className="flex items-center gap-2">
+                          <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p]?.dot)} />
+                          {p}
+                        </span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -929,7 +993,10 @@ export default function Constraints() {
 
       <EventForm
         open={eventFormOpen}
-        onClose={() => setEventFormOpen(false)}
+        onClose={() => {
+          setEventFormOpen(false);
+          setEventEditing(null);
+        }}
         onSubmit={handleEventSubmit}
         editing={eventEditing}
       />

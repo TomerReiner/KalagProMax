@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PLUGOT } from "@/lib/constants";
+import { PLUGOT, PLUGA_COLORS } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import TimeInput from "@/components/TimeInput";
 
 const RECURRENCE_OPTIONS = [
@@ -111,7 +112,12 @@ export default function RecurringEventForm({ open, onClose, onSubmit, editing })
               <SelectTrigger><SelectValue placeholder="ללא פלוגה" /></SelectTrigger>
               <SelectContent>
                 {PLUGOT.map((p) => (
-                  <SelectItem key={p} value={p}>{p}</SelectItem>
+                  <SelectItem key={p} value={p}>
+                    <span className="flex items-center gap-2">
+                      <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p]?.dot)} />
+                      {p}
+                    </span>
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>

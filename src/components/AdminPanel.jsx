@@ -7,7 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { UserCog, Check, X, Loader2, Mail, Users, FlaskConical, RotateCcw, LogOut, ChevronDown, ChevronUp } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
-import { PLUGOT } from "@/lib/constants";
+import { PLUGOT, PLUGA_COLORS } from "@/lib/constants";
 import { usePreviewRole } from "@/lib/previewRoleContext";
 import { cn } from "@/lib/utils";
 import { isTestMode, disableTestMode } from "@/lib/testMode";
@@ -303,7 +303,12 @@ export default function AdminPanel() {
                   </SelectTrigger>
                   <SelectContent>
                     {PLUGOT.map((p) => (
-                      <SelectItem key={p} value={p}>{p}</SelectItem>
+                      <SelectItem key={p} value={p}>
+                        <span className="flex items-center gap-2">
+                          <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p]?.dot)} />
+                          {p}
+                        </span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -370,7 +375,12 @@ export default function AdminPanel() {
                           </SelectTrigger>
                           <SelectContent>
                             {PLUGOT.map((p) => (
-                              <SelectItem key={p} value={p}>{p}</SelectItem>
+                              <SelectItem key={p} value={p}>
+                                <span className="flex items-center gap-2">
+                                  <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p]?.dot)} />
+                                  {p}
+                                </span>
+                              </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -456,7 +466,12 @@ export default function AdminPanel() {
                         </SelectTrigger>
                         <SelectContent>
                           {PLUGOT.map((p) => (
-                            <SelectItem key={p} value={p}>{p}</SelectItem>
+                            <SelectItem key={p} value={p}>
+                              <span className="flex items-center gap-2">
+                                <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p]?.dot)} />
+                                {p}
+                              </span>
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -500,12 +515,19 @@ export default function AdminPanel() {
                                   const busyKey = `${u.id}_${perm.key}_${p}`;
                                   const checked = hasPermission(userPerms, perm.key, p);
                                   return (
-                                    <label key={p} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                                    <label
+                                      key={p}
+                                      className={cn(
+                                        "flex items-center gap-1.5 text-xs cursor-pointer rounded-full px-2 py-1 transition-colors",
+                                        checked && PLUGA_COLORS[p]?.light
+                                      )}
+                                    >
                                       <Checkbox
                                         checked={checked}
                                         disabled={togglingPerm === busyKey}
                                         onCheckedChange={() => handleTogglePermission(u.id, perm.key, p)}
                                       />
+                                      <span className={cn("w-2 h-2 rounded-full", PLUGA_COLORS[p]?.dot)} />
                                       {p}
                                     </label>
                                   );

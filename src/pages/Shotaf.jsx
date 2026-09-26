@@ -183,7 +183,16 @@ export default function Shotaf() {
                 </SelectTrigger>
                 <SelectContent>
                   {SHOTAF_OPTIONS.map((p) => (
-                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                    <SelectItem key={p} value={p}>
+                      {PLUGA_COLORS[p] ? (
+                        <span className="flex items-center gap-2">
+                          <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p].dot)} />
+                          {p}
+                        </span>
+                      ) : (
+                        p
+                      )}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
