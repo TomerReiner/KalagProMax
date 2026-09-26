@@ -5,7 +5,7 @@ import TopNav from "./TopNav";
 import AdminPanel from "./AdminPanel";
 import NotificationsBell from "./NotificationsBell";
 import { usePreviewRole } from "@/lib/previewRoleContext";
-import { hasPermission, plugotFor } from "@/lib/permissions";
+import { hasPermission, plugotFor, effectivePermissions } from "@/lib/permissions";
 
 const LOGO_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/98fcd8299_image.png";
 const CHARACTER_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/89a22bb0d_image.png";
@@ -51,8 +51,12 @@ export default function AppLayout() {
     if (!user) return;
     const effectiveRole = previewRole || user.role;
     const allowed = [...(ROLE_PAGES[effectiveRole] || [])];
-    if (hasPermission(myPermissions, "playbox_orders")) allowed.push("/playbox");
-    if (plugotFor(myPermissions, "meal_regulators").length > 0 && !allowed.includes("/klaf")) allowed.push("/klaf");
+    // Admins hold every delegated permission automatically — use the REAL
+    // role here, never the previewed one, so previewing as another role
+    // never hands that role an admin's access (see effectivePermissions).
+    const delegatedPermissions = effectivePermissions(myPermissions, user.role);
+    if (hasPermission(delegatedPermissions, "playbox_orders")) allowed.push("/playbox");
+    if (plugotFor(delegatedPermissions, "meal_regulators").length > 0 && !allowed.includes("/klaf")) allowed.push("/klaf");
     if (!allowed.includes(location.pathname)) {
       navigate(ROLE_DEFAULT_PAGE[effectiveRole] || "/", { replace: true });
     }

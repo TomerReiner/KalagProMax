@@ -23,8 +23,12 @@
 //
 // Where each of these actually lives in the UI:
 //  - frisa_pina: src/pages/Klaf.jsx, folded into the existing frisa task.
-//  - meal_regulators: src/pages/Klaf.jsx, its own section per viewed pluga.
+//  - meal_regulators: src/pages/Klaf.jsx, broken down by every pluga the
+//    viewer is authorized for (see effectivePermissions below for how an
+//    admin ends up authorized for all of them without an explicit grant).
 //  - playbox_orders: its own page, src/pages/Playbox.jsx (/playbox route).
+
+import { PLUGOT } from "./constants";
 
 export const PERMISSIONS = {
   frisa_pina: {
@@ -78,4 +82,19 @@ export function hasAnyPermission(userPermissions, keys) {
 export function plugotFor(userPermissions, key) {
   if (!Array.isArray(userPermissions)) return [];
   return userPermissions.filter((p) => p.permission === key && p.pluga != null).map((p) => p.pluga);
+}
+
+// Admins hold every delegated permission, for every pluga, automatically —
+// no explicit user_permissions row needed. Every page that checks a
+// signed-in user's permissions should run what it fetched through this
+// first: `effectivePermissions(rawRows, user.role)` — then pass the result
+// to hasPermission/hasAnyPermission/plugotFor exactly as before. Pass the
+// user's REAL role here, never a previewed one (see usePreviewRole) — the
+// admin-preview switcher is for seeing the app as another role, not for
+// handing that role an admin's permissions.
+export function effectivePermissions(userPermissions, role) {
+  if (role !== "admin") return Array.isArray(userPermissions) ? userPermissions : [];
+  return PERMISSION_LIST.flatMap((perm) =>
+    perm.scoped ? PLUGOT.map((pluga) => ({ permission: perm.key, pluga })) : [{ permission: perm.key, pluga: null }]
+  );
 }

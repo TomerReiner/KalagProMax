@@ -12,9 +12,31 @@ import KlafSummary from "@/components/klaf/KlafSummary";
 import KlafEventConfirmations from "@/components/klaf/KlafEventConfirmations";
 import { usePreviewRole } from "@/lib/previewRoleContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { plugotFor, hasPermission } from "@/lib/permissions";
+import { plugotFor, effectivePermissions } from "@/lib/permissions";
 import { getFoodPickupState, FOOD_PICKUP_STATE_LABELS } from "@/lib/eventConfirmations";
 import KlafMealRegulators from "@/components/klaf/KlafMealRegulators";
+
+// One card per pluga the viewer is authorized for (meal_regulators is
+// scoped, so several plugot at once is the common case, not the exception —
+// an admin, via effectivePermissions, is implicitly authorized for all of
+// them). Each pluga gets its own color-coded card so it's obvious which
+// pluga's data is which.
+function MealRegulatorsBreakdown({ plugot, dateStr }) {
+  if (!plugot.length) return null;
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {plugot.map((p) => {
+        const color = PLUGA_COLORS[p];
+        return (
+          <div key={p} className={cn("rounded-xl border-2 p-3", color?.light, color?.border)}>
+            <p className="text-sm font-bold mb-2">{p}</p>
+            <KlafMealRegulators pluga={p} dateStr={dateStr} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function Klaf() {
   const navigate = useNavigate();
@@ -33,10 +55,6 @@ export default function Klaf() {
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
-  // Which pluga a delegated meal_regulators-only visitor (no קלפ role at
-  // all) is currently viewing — real קלפ users use previewPluga/user.pluga
-  // instead, same as before.
-  const [delegatedPluga, setDelegatedPluga] = useState(null);
 
   useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
@@ -123,11 +141,17 @@ export default function Klaf() {
 
   const effectiveRole = previewRole || user.role;
   const isKlaf = effectiveRole === "קלפ";
-  // Other plugot this signed-in user was delegated the meal_regulators
-  // permission for (see src/lib/permissions.js / AdminPanel's "הרשאות
-  // מיוחדות"). A non-קלפ holder of this permission gets a minimal version of
-  // this page (see isDelegatedOnly below) instead of being blocked outright.
-  const regulatorPlugot = plugotFor(myPermissions, "meal_regulators");
+  // Admins hold every delegated permission automatically (see
+  // effectivePermissions) — use the REAL role here, never the previewed one,
+  // so previewing as another role never hands that role an admin's access.
+  const delegatedPermissions = effectivePermissions(myPermissions, user.role);
+  // Every pluga this signed-in user is authorized to manage meal regulators
+  // for (see src/lib/permissions.js / AdminPanel's "הרשאות מיוחדות") — for
+  // most קלפ holders that's just their own pluga, but a delegated grant (or
+  // an admin's automatic one) can cover several at once. A non-קלפ holder of
+  // this permission gets a minimal version of this page (see isDelegatedOnly
+  // below) instead of being blocked outright.
+  const regulatorPlugot = plugotFor(delegatedPermissions, "meal_regulators");
   const isDelegatedOnly = !isKlaf && regulatorPlugot.length > 0;
 
   if (!isKlaf && !isDelegatedOnly) {
@@ -139,9 +163,8 @@ export default function Klaf() {
   }
 
   if (isDelegatedOnly) {
-    const dPluga = delegatedPluga || regulatorPlugot[0];
     return (
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+      <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
         <div className="text-center">
           <div className="flex items-center justify-center gap-3 mb-1">
             <Button variant="outline" size="icon" onClick={goPrevDay}>
@@ -156,23 +179,7 @@ export default function Klaf() {
             חזור להיום
           </button>
         </div>
-        {regulatorPlugot.length > 1 ? (
-          <Select value={dPluga} onValueChange={setDelegatedPluga}>
-            <SelectTrigger className="w-[180px] mx-auto"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {regulatorPlugot.map((p) => (
-                <SelectItem key={p} value={p}>{p}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : (
-          <p className="text-sm font-medium text-center">
-            פלוגה: <span className="font-bold">{dPluga}</span>
-          </p>
-        )}
-        <div className="rounded-xl border border-border p-3 bg-white">
-          <KlafMealRegulators pluga={dPluga} dateStr={dateStr} />
-        </div>
+        <MealRegulatorsBreakdown plugot={regulatorPlugot} dateStr={dateStr} />
       </div>
     );
   }
@@ -204,7 +211,7 @@ export default function Klaf() {
   // for (see src/lib/permissions.js / AdminPanel's "הרשאות מיוחדות"). Lets
   // them complete the frisa task below on a day it's assigned to one of
   // those plugot, not just their own.
-  const frisaExtraPlugot = plugotFor(myPermissions, "frisa_pina").filter((p) => p !== pluga);
+  const frisaExtraPlugot = plugotFor(delegatedPermissions, "frisa_pina").filter((p) => p !== pluga);
 
   // Build tasks (list)
   const tasks = [];
@@ -360,7 +367,7 @@ export default function Klaf() {
         </button>
       </div>
 
-      <div className={cn("rounded-xl border-2 p-3 flex items-center justify-between", plugaColor.light, plugaColor.border)}>
+      <div className={cn("rounded-xl border-2 p-3 flex items-center justify-between flex-wrap gap-2", plugaColor.light, plugaColor.border)}>
         <div className="flex items-center gap-2">
           {previewRole === "קלפ" ? (
             <Select value={previewPluga || ""} onValueChange={setPreviewPluga}>
@@ -449,9 +456,9 @@ export default function Klaf() {
                       )}
                     </button>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
                         <Icon className="w-4 h-4 text-slate-500 shrink-0" />
-                        <p className={cn("font-medium text-sm", completed && "line-through text-muted-foreground")}>
+                        <p className={cn("font-medium text-sm break-words", completed && "line-through text-muted-foreground")}>
                           {task.label}
                         </p>
                         {task.unassigned && (
@@ -524,9 +531,9 @@ export default function Klaf() {
           <KlafSummary dateStr={dateStr} />
         </div>
 
-        {hasPermission(myPermissions, "meal_regulators", pluga) && (
-          <div className="rounded-xl border border-border p-3 bg-white mt-2">
-            <KlafMealRegulators pluga={pluga} dateStr={dateStr} />
+        {regulatorPlugot.length > 0 && (
+          <div className="mt-2">
+            <MealRegulatorsBreakdown plugot={regulatorPlugot} dateStr={dateStr} />
           </div>
         )}
         </>

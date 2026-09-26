@@ -47,6 +47,15 @@ checklist — do these steps in order.
   `food_travel_requests` table (that feature was redesigned into the
   `food_pickup_needed` checkbox above before it ever really shipped). Drops
   that table if it exists; a no-op on a project that never had it.
+- `supabase/migrations/0007_meal_regulator_phones.sql` adds a phone number
+  next to each meal regulator's name — see the dedicated section below.
+- `supabase/migrations/0008_playbox_stock_tracking.sql` adds Playbox
+  stock/reorder-point tracking (`playbox_items` + `playbox_orders
+  .auto_generated`) — see the dedicated section below.
+- General tasks (`src/pages/Tasks.jsx`, the backlog list) got a straight
+  "סיים משימה" (finish task) button instead of picking a date and assigning
+  it to a day first — most of these just need to be marked done, not
+  scheduled.
 - The 3 Base44 backend functions became Vercel serverless functions under
   `/api`, plus a 4th (`/api/invite-user.js`) that replaces
   `base44.users.inviteUser` (admin invites need the service-role key, which
@@ -87,9 +96,14 @@ to the next):
 7. `supabase/migrations/0006_drop_food_travel_requests.sql` — only needed if
    you're in the situation above; drops the leftover `food_travel_requests`
    table. Safe/no-op if you never had it.
+8. `supabase/migrations/0007_meal_regulator_phones.sql` — safe/idempotent,
+   adds `meal_regulators.regulators` (name+phone pairs) and backfills it
+   from the old `names` array.
+9. `supabase/migrations/0008_playbox_stock_tracking.sql` — safe/idempotent,
+   adds `playbox_items` and `playbox_orders.auto_generated`.
 
 (Or, if you use the Supabase CLI: `supabase db push` after `supabase link` —
-it will pick up all seven in filename order.)
+it will pick up all nine in filename order.)
 
 ## 2. Turn on email-OTP signup (only if you'll use the Register page)
 
@@ -191,18 +205,40 @@ was folded into wherever it naturally belongs in the app instead:
   a klaf can always complete their own pluga's task as before; this just
   extends that to other plugot on days it's assigned to one of them.
 - **ניהול מווסתים לארוחות** (`meal_regulators`) — day-by-day editing of the
-  2-3 named meal regulators per pluga, for lunch and dinner separately. Also
-  lives on the Klaf page: a real קלפ who holds this permission for their own
-  pluga sees it as an extra section on their normal page; someone with no
-  קלפ role at all who was delegated this for one or more plugot instead gets
-  a minimal version of the Klaf page (just a date/pluga picker and the
-  meal-regulators editor, no task list) when they visit `/klaf`.
+  2-3 named meal regulators per pluga, for lunch and dinner separately, each
+  with an optional phone number for a tap-to-call link
+  (`supabase/migrations/0007_meal_regulator_phones.sql`,
+  `meal_regulators.regulators jsonb` — an array of `{name, phone}`, replacing
+  the old plain `names text[]`, which is kept in place unused rather than
+  dropped). Also lives on the Klaf page, broken down into one color-coded
+  card per pluga the viewer is authorized for (`MealRegulatorsBreakdown` in
+  `Klaf.jsx`) — most קלפ holders are only granted their own pluga so they see
+  just one card, but someone delegated several plugot (or an admin, who's
+  authorized for all of them) sees them side by side. A real קלפ sees it as
+  an extra section on their normal page; someone with no קלפ role at all who
+  was delegated this instead gets a minimal version of the Klaf page (just a
+  date nav and the breakdown, no task list) when they visit `/klaf`.
 - **פלייבוקס והזמנות להמשך השבוע** (`playbox_orders`) — org-wide, not
   per-pluga: whoever holds this sees a consolidated view of every pluga's
   order requests, before placing the real order on Playbox's own site. This
   one *does* get its own page — `src/pages/Playbox.jsx` at `/playbox` —
   since it's a focused, single-purpose screen rather than a grab-bag of
-  unrelated tabs.
+  unrelated tabs. The page has two tabs:
+  - **הזמנות** — the original manual order log (unchanged): pick a pluga,
+    item, quantity and optional notes, track status (ממתין/הוזמן/בוטל).
+  - **מלאי ומעקב חוסרים** — stock/reorder-point tracking added in
+    `supabase/migrations/0008_playbox_stock_tracking.sql` (`playbox_items`:
+    `pluga`, `item`, `target_quantity`, `current_quantity`, unique per
+    pluga+item). Same permission holders (plus admins) set how much of each
+    consumable a pluga is supposed to have on hand ("צריך שיהיה") versus how
+    much it currently has ("יש כרגע"), broken down by pluga the same way as
+    the meal-regulators cards. A "צור הזמנות לחוסרים" button scans every
+    item below its target and creates a `playbox_orders` row for the gap
+    (`auto_generated: true`, quantity = target − current), which then shows
+    up in the "הזמנות" tab with an "אוטומטי" badge for the same person to
+    place for real — the button never places an order itself, it only drafts
+    the request. Pressing it again doesn't pile up duplicates: it skips any
+    pluga+item that already has a pending (`ממתין`) auto-generated order.
 
 **"משיכת מזון לנסיעות" turned out not to need a permission or a table at
 all.** It's just a checkbox on the event form itself
@@ -223,6 +259,17 @@ switch. Equipment withdrawal access is *not* part of this system — it's the
 older `profiles.equipment_manager` flag, shown in the same place for
 convenience but stored separately (it already was exactly this kind of
 personal, role-independent flag, so there was no need to migrate it).
+
+**Admins hold all three permissions, for every pluga, automatically** — no
+explicit grant needed, and there's nothing to check in the admin UI for an
+admin user (expanding "הרשאות מיוחדות" there shows a note instead of
+checkboxes, since toggling one would have no effect). This is computed on
+the fly by `effectivePermissions(rawRows, role)` in `src/lib/permissions.js`
+— every page that checks a signed-in user's permissions runs what it fetched
+through this first, keyed off that user's *real* role, never a previewed
+one (the "תצוגת תפקיד" preview switcher changes how the app displays, not
+who's actually signed in, so it can't be used to borrow another role's
+access).
 
 Storage: `user_permissions` has one row per `(user_id, permission, pluga)`
 grant. A permission covering several plugot for the same person is simply

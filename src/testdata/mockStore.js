@@ -2,9 +2,9 @@
 // listed in fixtures.js — the 6 original features (Klaf page, TopNav badge,
 // daily schedule + constraints, backlog tasks, event confirmations, sticky
 // nav), gaps and equipment/withdrawals, and the delegated-permissions
-// feature (user_permissions, playbox_orders, meal_regulators — events.
-// food_pickup_needed is just a plain column on the events table already
-// covered above, not a table of its own). Nothing here ever calls Supabase;
+// feature (user_permissions, playbox_orders, meal_regulators, playbox_items
+// — events.food_pickup_needed is just a plain column on the events table
+// already covered above, not a table of its own). Nothing here ever calls Supabase;
 // it's plain arrays in a JS module, reset on every full page load and
 // whenever resetTestData() is called.
 //

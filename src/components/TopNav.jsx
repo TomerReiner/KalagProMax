@@ -5,7 +5,7 @@ import { HardHat, CalendarDays, CalendarRange, ClipboardList, ClipboardCheck, Ch
 import { cn } from "@/lib/utils";
 import { usePreviewRole } from "@/lib/previewRoleContext";
 import { useOpenTasksToday } from "@/lib/useOpenTasksToday";
-import { hasAnyPermission } from "@/lib/permissions";
+import { hasAnyPermission, effectivePermissions } from "@/lib/permissions";
 
 const ALL_NAV_ITEMS = [
   { to: "/", label: "פערים", icon: HardHat, roles: ["admin", "קלפ", "רסר", "סגל"] },
@@ -51,8 +51,12 @@ export default function TopNav() {
   const targetPluga = previewRole === "קלפ" ? previewPluga : user?.pluga;
   const { openCount } = useOpenTasksToday(effectiveRole === "קלפ" ? targetPluga : null);
   const order = ROLE_ORDER[effectiveRole] || [];
+  // Admins hold every delegated permission automatically — use the REAL role
+  // here, never the previewed one, so previewing as another role never hands
+  // that role an admin's access (see effectivePermissions).
+  const delegatedPermissions = effectivePermissions(myPermissions, user?.role);
   const items = ALL_NAV_ITEMS
-    .filter((item) => !user || item.roles.includes(effectiveRole) || (item.extraPermissionKey && hasAnyPermission(myPermissions, [item.extraPermissionKey])))
+    .filter((item) => !user || item.roles.includes(effectiveRole) || (item.extraPermissionKey && hasAnyPermission(delegatedPermissions, [item.extraPermissionKey])))
     .sort((a, b) => order.indexOf(a.to) - order.indexOf(b.to));
 
   return (

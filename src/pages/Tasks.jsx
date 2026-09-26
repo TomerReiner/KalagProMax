@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Loader2, ChevronRight, ChevronLeft, ClipboardList, Archive, RefreshCw, AlertCircle, Plus, CheckCircle2, CalendarPlus, ListTodo } from "lucide-react";
+import { Loader2, ChevronRight, ChevronLeft, ClipboardList, Archive, RefreshCw, AlertCircle, Plus, CheckCircle2, ListTodo } from "lucide-react";
 import StandaloneTaskForm from "@/components/tasks/StandaloneTaskForm";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PLUGOT, PLUGA_COLORS, formatHebrewDate, toDateStr } from "@/lib/constants";
@@ -199,13 +199,12 @@ export default function Tasks() {
     });
   }, [allTasks, plugaFilter]);
 
-  // General/weekly tasks with no specific date yet ("backlog"). An admin creates
-  // these without picking a day, and later "drops" one onto a specific date,
-  // after which it behaves like any other direct task (shows up in that day's
-  // Klaf view / Tasks day-and-week view).
+  // General tasks with no specific date ("backlog") — things that need to
+  // get done but aren't tied to a day's schedule (e.g. "fix the gate"), so
+  // they're just marked done directly rather than scheduled onto a date.
   const backlogTasks = useMemo(() => {
     return directTasks
-      .filter((dt) => !dt.task_date)
+      .filter((dt) => !dt.task_date && dt.status !== "טופלה")
       .filter((dt) => {
         if (plugaFilter === "all") return true;
         const plugas = dt.responsible_plugas?.length ? dt.responsible_plugas : (dt.pluga ? [dt.pluga] : []);
@@ -284,14 +283,8 @@ export default function Tasks() {
   };
 
   const handleMarkDone = async (e, taskId) => {
-    e.stopPropagation();
+    e?.stopPropagation();
     await base44.entities.DirectTask.update(taskId, { status: "טופלה" });
-    await loadAll();
-  };
-
-  const handleAssignDate = async (taskId, date) => {
-    if (!date) return;
-    await base44.entities.DirectTask.update(taskId, { task_date: date });
     await loadAll();
   };
 
@@ -336,7 +329,7 @@ export default function Tasks() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center shadow-sm">
             <ClipboardList className="w-5 h-5" />
@@ -412,11 +405,11 @@ export default function Tasks() {
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-purple-700 bg-purple-50 rounded-lg px-3 py-2 border border-purple-200">
             <ListTodo className="w-4 h-4" />
-            <p className="text-sm font-semibold">משימות כלליות לשיבוץ ({backlogTasks.length})</p>
+            <p className="text-sm font-semibold">משימות כלליות ({backlogTasks.length})</p>
           </div>
           <div className="space-y-2">
             {backlogTasks.map((dt) => (
-              <BacklogTaskCard key={dt.id} task={dt} onAssignDate={(date) => handleAssignDate(dt.id, date)} />
+              <BacklogTaskCard key={dt.id} task={dt} onFinish={() => handleMarkDone(null, dt.id)} />
             ))}
           </div>
         </div>
@@ -500,8 +493,7 @@ export default function Tasks() {
   );
 }
 
-function BacklogTaskCard({ task, onAssignDate }) {
-  const [date, setDate] = useState("");
+function BacklogTaskCard({ task, onFinish }) {
   const plugas = task.responsible_plugas?.length ? task.responsible_plugas : (task.pluga ? [task.pluga] : []);
 
   return (
@@ -522,18 +514,13 @@ function BacklogTaskCard({ task, onAssignDate }) {
           </div>
         )}
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="h-9 rounded-md border border-input bg-white px-2 text-sm"
-        />
-        <Button size="sm" disabled={!date} onClick={() => onAssignDate(date)} className="gap-1">
-          <CalendarPlus className="w-3.5 h-3.5" />
-          שבץ
-        </Button>
-      </div>
+      <button
+        onClick={onFinish}
+        className="shrink-0 flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full bg-green-100 text-green-700 font-medium hover:bg-green-200 transition-colors"
+      >
+        <CheckCircle2 className="w-4 h-4" />
+        סיים משימה
+      </button>
     </div>
   );
 }

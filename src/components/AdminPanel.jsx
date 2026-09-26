@@ -482,7 +482,11 @@ export default function AdminPanel() {
 
                   {expandedUser === u.id && (
                     <div className="space-y-3 pt-1 border-t">
-                      {PERMISSION_LIST.map((perm) => {
+                      {u.role === "admin" ? (
+                        <p className="text-xs text-muted-foreground pt-2">
+                          מנהלים מחזיקים אוטומטית בכל ההרשאות, לכל הפלוגות — אין צורך להעניק דרך כאן.
+                        </p>
+                      ) : PERMISSION_LIST.map((perm) => {
                         const userPerms = permsFor(u.id);
                         return (
                           <div key={perm.key} className="space-y-1.5 pt-2">

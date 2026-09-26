@@ -153,6 +153,11 @@ const entities = {
   UserPermission: makeEntity('user_permissions'),
   PlayboxOrder: makeEntity('playbox_orders'),
   MealRegulator: makeEntity('meal_regulators'),
+  // Playbox stock/reorder-point tracking (see
+  // supabase/migrations/0008_playbox_stock_tracking.sql) — target vs.
+  // current quantity per pluga+item, feeding the "צור הזמנות לחוסרים" action
+  // in src/pages/Playbox.jsx.
+  PlayboxItem: makeEntity('playbox_items'),
 };
 
 // ---------------------------------------------------------------------------

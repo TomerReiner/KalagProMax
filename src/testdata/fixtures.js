@@ -313,14 +313,30 @@ export function buildFixtures() {
   ];
 
   const playbox_orders = [
-    { id: "81000000-0000-4000-8000-000000000001", pluga: "פארן", order_date: dateStr(D1), item: "חטיפים", quantity: 10, notes: null, status: "ממתין", ...stamp },
-    { id: "81000000-0000-4000-8000-000000000002", pluga: "בשור", order_date: dateStr(D2), item: "שתייה קלה", quantity: 24, notes: "לאירוע יום שלישי", status: "הוזמן", ...stamp },
-    { id: "81000000-0000-4000-8000-000000000003", pluga: "צין", order_date: dateStr(D0), item: "עוגות", quantity: 3, notes: null, status: "בוטל", ...stamp },
+    { id: "81000000-0000-4000-8000-000000000001", pluga: "פארן", order_date: dateStr(D1), item: "חטיפים", quantity: 10, notes: null, status: "ממתין", auto_generated: false, ...stamp },
+    { id: "81000000-0000-4000-8000-000000000002", pluga: "בשור", order_date: dateStr(D2), item: "שתייה קלה", quantity: 24, notes: "לאירוע יום שלישי", status: "הוזמן", auto_generated: false, ...stamp },
+    { id: "81000000-0000-4000-8000-000000000003", pluga: "צין", order_date: dateStr(D0), item: "עוגות", quantity: 3, notes: null, status: "בוטל", auto_generated: false, ...stamp },
+    // חוסר קיים שכבר קיבל הזמנה אוטומטית ממתינה — מדגים את מניעת הכפילות
+    // ב"צור הזמנות לחוסרים" (ר' playbox_items למטה: פארן/מגבונים 5 מתוך 20).
+    { id: "81000000-0000-4000-8000-000000000004", pluga: "פארן", order_date: dateStr(D0), item: "מגבונים", quantity: 15, notes: "נוצר אוטומטית ממעקב המלאי", status: "ממתין", auto_generated: true, ...stamp },
+  ];
+
+  // Playbox stock/reorder-point tracking (see
+  // supabase/migrations/0008_playbox_stock_tracking.sql). "נייר טואלט" for
+  // בשור is short with no pending auto order yet, so it's the one the demo
+  // "צור הזמנות לחוסרים" button should actually act on; "מגבונים" for פארן
+  // is short too but already has a pending auto-generated order above, so
+  // the button should skip it instead of duplicating it.
+  const playbox_items = [
+    { id: "83000000-0000-4000-8000-000000000001", pluga: "פארן", item: "נייר טואלט", target_quantity: 20, current_quantity: 20, ...stamp },
+    { id: "83000000-0000-4000-8000-000000000002", pluga: "פארן", item: "מגבונים", target_quantity: 20, current_quantity: 5, ...stamp },
+    { id: "83000000-0000-4000-8000-000000000003", pluga: "בשור", item: "נייר טואלט", target_quantity: 15, current_quantity: 2, ...stamp },
+    { id: "83000000-0000-4000-8000-000000000004", pluga: "בשור", item: "סמרטוטים", target_quantity: 10, current_quantity: 10, ...stamp },
   ];
 
   const meal_regulators = [
-    { id: "82000000-0000-4000-8000-000000000001", pluga: "פארן", meal_date: dateStr(D0), meal_type: "צהריים", names: ["רב\"ט כהן", "טוראי לוי"], ...stamp },
-    { id: "82000000-0000-4000-8000-000000000002", pluga: "פארן", meal_date: dateStr(D0), meal_type: "ערב", names: ["סמל מזרחי", "טוראי אבו", "רב\"ט דוד"], ...stamp },
+    { id: "82000000-0000-4000-8000-000000000001", pluga: "פארן", meal_date: dateStr(D0), meal_type: "צהריים", regulators: [{ name: "רב\"ט כהן", phone: "0521234567" }, { name: "טוראי לוי", phone: null }], ...stamp },
+    { id: "82000000-0000-4000-8000-000000000002", pluga: "פארן", meal_date: dateStr(D0), meal_type: "ערב", regulators: [{ name: "סמל מזרחי", phone: "0529876543" }, { name: "טוראי אבו", phone: null }, { name: "רב\"ט דוד", phone: "0541112233" }], ...stamp },
   ];
 
   return {
@@ -341,5 +357,6 @@ export function buildFixtures() {
     user_permissions,
     playbox_orders,
     meal_regulators,
+    playbox_items,
   };
 }

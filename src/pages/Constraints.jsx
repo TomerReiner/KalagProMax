@@ -305,7 +305,7 @@ export default function Constraints() {
             <p className="text-xs text-muted-foreground">{viewMode === "day" ? "לוח זמנים יומי" : "לוח זמנים שבועי"}</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button onClick={() => {
             setEditing(null);
             setForm({ plugas: [], constraint_date: toDateStr(new Date()), start_time: "08:00", end_time: "10:00", title: "", details: "" });
@@ -329,7 +329,7 @@ export default function Constraints() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between bg-white rounded-xl border border-border p-3">
+      <div className="flex items-center justify-between bg-white rounded-xl border border-border p-3 flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" onClick={goPrev}>
             <ChevronRight className="w-4 h-4" />
