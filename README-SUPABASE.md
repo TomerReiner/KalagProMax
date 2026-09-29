@@ -69,6 +69,28 @@ checklist — do these steps in order.
   `meal_regulators.entry_time` — one scheduled entry time per pluga+meal+day,
   since lunch in particular has each pluga entering at a different time. See
   the dedicated section below.
+- `supabase/migrations/0015_task_completions_direct_type.sql` fixes a
+  pre-existing bug: `task_completions.task_type`'s CHECK constraint only ever
+  allowed `('event', 'shotaf')`, but the app itself has always written a
+  third value, `'direct'`, for completions of `direct_tasks` rows (see
+  `task_type: task.type` in `src/pages/Klaf.jsx` and the `direct` rows in
+  `src/testdata/fixtures.js`) — any real attempt to mark a direct task
+  complete had always violated this constraint and failed outright. Widened
+  to `('event', 'shotaf', 'direct')`, matching what the app already writes.
+- `supabase/data-import/` holds a one-time production data import (a real
+  Base44 export, 15 CSVs) into this schema — not a migration, since it
+  doesn't touch table structure. See `supabase/data-import/README.md` for
+  what it loads, the data-quality handling it applies on the way in (Base44's
+  own row ids aren't valid Postgres uuids; one `gap_updates` row referenced a
+  since-deleted gap), and how to run it. Its `access_requests.assigned_role`
+  handling also surfaced a real mismatch worth knowing about: `0001_init.sql`'s
+  CHECK constraint spells "קלף" with a final-form `ף`, but the app itself
+  (`AdminPanel.jsx`, `TopNav.jsx`, `AppLayout.jsx`, `WarehouseItemForm.jsx`,
+  `Klaf.jsx`, `Equipment.jsx`, `fixtures.js`) overwhelmingly writes/reads it
+  with a plain `פ` — confirmed live, since Supabase rejected the `ף` form on
+  insert. The deployed constraint is evidently out of sync with this
+  migration file; nothing here fixes that (it's a schema question, not a
+  data-import one) but it's worth reconciling separately.
 - `src/lib/constants.js` now exports `WAREHOUSES` (the 3 physical
   warehouses: מכולה / מחסן קרביץ / מחסן לוגיסטי), moved there from a local
   const in `src/pages/Equipment.jsx` so `src/pages/Playbox.jsx` can offer the
@@ -596,3 +618,123 @@ app.
 3. **`clear_test_playground.sql`** — removes everything the two scripts
    above inserted, in one go, when you're done testing. Ends with a sanity
    `select` that should show `0` remaining test rows.
+
+## 2026-09-29 feature batch: colored task rows, week-ahead task list, real
+## push notifications, admin announcements, icon-only nav, driver details on
+## event creation
+
+Six related changes landed together. What each one touches, and what you
+need to do before they work in production:
+
+1. **"משימות שלי" task rows colored by pluga** (`src/pages/Klaf.jsx`) — pure
+   frontend, no setup needed. Rows now use the pluga's own color theme
+   (`PLUGA_COLORS[pluga].light` / `.border`, the same palette used
+   everywhere else) instead of plain white, so the list is easier to scan at
+   a glance. Completed (green) and unassigned (amber) rows still get their
+   own distinct colors as before.
+
+2. **The task list is no longer tied to the schedule's date nav.** It always
+   shows *today through this week's Saturday*, grouped by day ("היום",
+   "מחר", then weekday+date), independent of whatever day the "לוז" (⟵/⟶)
+   nav next to it is currently browsing. This needed `base44.entities.X
+   .filter()` to support a date **range** — `{ routine_date: { gte, lte } }`
+   — not just exact match, added in both `src/api/base44Client.js` (a real
+   `.gte()/.lte()/.gt()/.lt()` on the Supabase query) and
+   `src/testdata/mockStore.js` (the equivalent in-memory comparison, so test
+   mode behaves the same). No schema change, no migration needed for this one.
+
+3. **Real Web Push notifications** (Android/desktop: works directly; iOS:
+   only once the site is added to the Home Screen — Apple's own restriction,
+   explained in-app on the new "אזור אישי" page). New pieces:
+   - `supabase/migrations/0016_push_subscriptions.sql` — **apply this**
+     before the rest works. One row per browser subscription.
+   - `public/sw.js` — the service worker that actually shows the OS
+     notification and handles a tap on it. `public/manifest.json` plus the
+     `apple-mobile-web-app-*` tags in `index.html` make "add to home screen"
+     work properly (required for iOS, and makes Android's install prompt
+     nicer too).
+   - `src/lib/pushNotifications.js` — client-side subscribe/unsubscribe,
+     used from the new **`src/pages/PersonalArea.jsx`** ("אזור אישי") page,
+     where every signed-in user can turn notifications on/off for *that
+     device*.
+   - `api/push-subscribe.js` / `api/push-unsubscribe.js` — save/remove a
+     subscription server-side.
+   - `api/_lib/webPush.js` — shared sender (wraps the `web-push` npm
+     package, now in `package.json` — run `npm install` after pulling this).
+     Automatically prunes a subscription if the push service reports it's
+     gone (410/404 — uninstalled, site data cleared, etc.).
+   - **You must generate your own VAPID keypair** (the one checked into
+     `.env.local` here is a real, working keypair generated for this
+     project during development — you can keep using it, or run
+     `npx web-push generate-vapid-keys` for a fresh one). Set
+     `VITE_VAPID_PUBLIC_KEY`, `VAPID_PUBLIC_KEY` (same value as the VITE_ one
+     — see the comment in `.env.example` for why it's set twice),
+     `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` in Vercel's project env vars,
+     not just locally.
+
+4. **7:00 daily task reminder push** (`api/send-daily-tasks-push.js`) — a
+   server-side mirror of `src/lib/useOpenTasksToday.js`'s algorithm, run
+   once for every קלפ (matched by `profiles.pluga is not null`, sidestepping
+   the `קלפ`/`קלף` role-spelling ambiguity noted earlier in this file),
+   pushing anyone with open tasks today and at least one subscribed device.
+   Wired up via `vercel.json`'s `"crons"` — **two** entries (04:00 and 05:00
+   UTC) because Israel alternates UTC+2/UTC+3 across the year and Vercel
+   cron schedules are fixed UTC; the function itself checks the real
+   current Israel hour and no-ops unless it's actually 7am there, so only
+   one of the two firings ever sends anything on a given day. Requires
+   `CRON_SECRET` set in Vercel (any random string — Vercel then sends it
+   automatically as `Authorization: Bearer <CRON_SECRET>` on every
+   cron-triggered request, which is what authorizes the call). **Vercel
+   Cron Jobs require at least the Pro plan for more than one cron job on the
+   Hobby tier** — check your plan's cron limits before relying on this; if
+   you're on Hobby with only one cron slot available, you'll need to pick
+   just one of the two UTC times (accepting a one-hour drift for half the
+   year) or upgrade.
+
+5. **Admin broadcast announcements** — `supabase/migrations
+   /0017_announcements.sql` (**apply this** too), a new "הודעות" tab in the
+   admin panel (`src/components/AdminPanel.jsx`) to compose/publish/delete
+   one, `api/publish-announcement.js` to actually push-notify every
+   subscribed device once one's published, and `src/components
+   /NotificationsBell.jsx` extended to show announcements (highlighted,
+   above the gap-updates list) to every signed-in user, sharing the same
+   "מסומן כנקרא" (`profiles.notifications_last_read`) cutoff gap updates
+   already use.
+
+6. **Icon-only top nav + "אזור אישי"** (`src/components/TopNav.jsx`) — the
+   nav bar now shows icons only (label as a hover tooltip/`title` instead).
+   "משיכות ציוד" and "פלייבוקס" moved off the bar into the new "אזור אישי"
+   page (item 3 above), reachable from a single new icon; both routes
+   (`/equipment`, `/playbox`) still work exactly as before, just linked from
+   there instead of being their own nav items. `src/components
+   /AppLayout.jsx`'s `ROLE_PAGES` allowlist was updated to include
+   `/personal` for every role.
+
+7. **Driver/contact details when *creating* a schedule event, not only when
+   editing** (`src/components/constraints/EventForm.jsx`,
+   `src/pages/Constraints.jsx`) — no schema/migration change. Contacts
+   typed in while creating a brand-new event are held client-side
+   (`pendingContacts`) until the event itself is actually created (it needs
+   a real `event_id` to attach to), then persisted right after in the same
+   submit. `Constraints.jsx`'s `handleEventSubmit` now returns the
+   created/updated event row so `EventForm` can do that. Reminder-offset and
+   per-pluga confirmation tracking still only appear once editing an
+   already-saved event (unchanged) — only contacts needed to move earlier,
+   per the actual request.
+
+### Deployment checklist for this batch
+
+1. Apply `0016_push_subscriptions.sql` then `0017_announcements.sql`, in
+   that order (same way every other migration here is applied — SQL editor
+   or `psql`, by hand, no migration runner).
+2. `npm install` (picks up the new `web-push` dependency).
+3. Set `VITE_VAPID_PUBLIC_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`,
+   `VAPID_SUBJECT`, and `CRON_SECRET` in Vercel's project env vars (see
+   `.env.example` — values already in `.env.local` for local dev).
+4. Redeploy so `vercel.json`'s new `"crons"` entries register (check your
+   Vercel plan's cron-job limits first — see point 4 above).
+5. Everyone who wants the daily 7:00 reminder / announcement pushes needs to
+   visit "אזור אישי" once and turn notifications on for their device(s) —
+   this can't be done on their behalf; each browser/device subscribes
+   itself (iOS additionally needs "add to home screen" first, explained
+   in-app).

@@ -17,11 +17,17 @@ const HEADER_IMAGE_URL = "https://media.base44.com/images/public/6aa1c4c872f2848
 // extraAllowedPages logic below, which adds "/playbox" for a playbox_orders
 // grant and "/klaf" for a meal_regulators grant (both personal, independent
 // of role, so any role might hold one).
+// "/personal" (אזור אישי) is reachable by every role — it's the new home for
+// the equipment/playbox links that used to be their own top-nav items (see
+// TopNav.jsx / src/pages/PersonalArea.jsx), plus push-notification opt-in
+// for everyone. "/equipment" and "/playbox" themselves stay in this
+// allowlist for the roles that could already reach them, since PersonalArea
+// links straight into those pages rather than duplicating them.
 const ROLE_PAGES = {
-  admin: ["/", "/daily-summary", "/shotaf", "/constraints", "/tasks", "/statistics", "/equipment"],
-  קלפ: ["/", "/daily-summary", "/constraints", "/klaf", "/equipment"],
-  רסר: ["/", "/constraints", "/statistics"],
-  סגל: ["/", "/constraints", "/statistics"],
+  admin: ["/", "/daily-summary", "/shotaf", "/constraints", "/tasks", "/statistics", "/equipment", "/personal"],
+  קלפ: ["/", "/daily-summary", "/constraints", "/klaf", "/equipment", "/personal"],
+  רסר: ["/", "/constraints", "/statistics", "/personal"],
+  סגל: ["/", "/constraints", "/statistics", "/personal"],
 };
 
 const ROLE_DEFAULT_PAGE = {

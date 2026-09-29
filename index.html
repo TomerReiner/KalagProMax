@@ -5,6 +5,16 @@
     <link rel="icon" type="image/svg+xml" href="https://base44.com/logo_v2.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="manifest" href="/manifest.json" />
+    <!-- iOS-specific "add to home screen" tags: this is the only way iOS
+         Safari will ever deliver real Web Push to this site (it refuses to
+         push to a plain Safari tab — see src/lib/pushNotifications.js's
+         isIosNonStandalone()). apple-touch-icon reuses the same hosted logo
+         AppLayout.jsx already uses for the header. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="Binder Done That" />
+    <meta name="theme-color" content="#000000" />
+    <link rel="apple-touch-icon" href="https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/98fcd8299_image.png" />
     <title>Binder Done That - קמנים 204 אימפריה!</title>
   </head>
   <body>

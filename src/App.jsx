@@ -23,6 +23,7 @@ import Klaf from '@/pages/Klaf';
 import Statistics from '@/pages/Statistics';
 import Equipment from '@/pages/Equipment';
 import Playbox from '@/pages/Playbox';
+import PersonalArea from '@/pages/PersonalArea';
 // Add page imports here
 // Note: the Base44 MCP OAuth-consent page (src/pages/OAuthConsent.jsx) was
 // dropped here — it authorized AI clients against Base44's own hosted MCP
@@ -79,6 +80,7 @@ const AuthenticatedApp = () => {
           <Route path="/statistics" element={<Statistics />} />
           <Route path="/equipment" element={<Equipment />} />
           <Route path="/playbox" element={<Playbox />} />
+          <Route path="/personal" element={<PersonalArea />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />

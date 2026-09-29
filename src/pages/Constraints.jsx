@@ -160,12 +160,17 @@ export default function Constraints() {
     // it as "dialog now showing a blank new-event form" for a frame and
     // reset local contacts/confirmations state. It's cleared once, correctly,
     // in the EventForm's onClose handler below instead.
+    let event;
     if (eventEditing) {
-      await base44.entities.Event.update(eventEditing.id, formData);
+      event = await base44.entities.Event.update(eventEditing.id, formData);
     } else {
-      await base44.entities.Event.create(formData);
+      event = await base44.entities.Event.create(formData);
     }
     await loadEvents();
+    // Returned so EventForm can attach any contacts (e.g. bus driver
+    // details) added while creating a brand-new event, which only get a
+    // real event_id to point at once this create actually happens.
+    return event;
   };
 
   const handleEventDelete = async (id) => {

@@ -32,10 +32,14 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
 
-  // Contacts (e.g. bus drivers) + per-pluga confirmation tracking. Both need
-  // a real event id, so this section only appears once the event has been
-  // saved at least once (editing !== null).
+  // Contacts (e.g. bus drivers). Confirmation tracking still needs a real
+  // event id (editing !== null), but contacts can now be entered while
+  // CREATING a new event too — they're held locally in pendingContacts until
+  // the event is actually created, then persisted right after (see
+  // handleSubmit). When editing an existing event, contacts still save
+  // immediately as before (contacts/loadExtras).
   const [contacts, setContacts] = useState([]);
+  const [pendingContacts, setPendingContacts] = useState([]);
   const [confirmations, setConfirmations] = useState([]);
   const [loadingExtras, setLoadingExtras] = useState(false);
   const [contactForm, setContactForm] = useState({ name: "", phone: "", role_label: "" });
@@ -52,6 +56,7 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
         });
       } else {
         setForm({ ...emptyForm, event_date: toDateStr(new Date()) });
+        setPendingContacts([]);
       }
       setContactForm({ name: "", phone: "", role_label: "" });
     }
@@ -85,28 +90,44 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
     if (!form.title || !form.event_date) return;
     setSaving(true);
     try {
-      // The "אנשי קשר" fields below are a separate, immediate save (handleAddContact
-      // calls the API the moment "הוסף" is clicked) — they are not part of `form` and
-      // are never sent by this submit. That's not obvious from the UI: someone who
-      // types a contact's name+phone and then clicks "שמור שינויים" directly (a
-      // completely natural expectation — "save the event" should mean "save
-      // everything I just filled in") had that contact silently discarded, with
-      // the whole dialog closing right after as if nothing was lost. This is what
-      // was actually behind the repeated "contacts aren't saved" reports. If a
-      // complete contact is sitting in the fields when the form is submitted, save
-      // it too before closing; if it's only half-filled, warn instead of dropping it.
-      if (editing?.id) {
-        const hasName = !!contactForm.name.trim();
-        const hasPhone = !!contactForm.phone.trim();
-        if (hasName && hasPhone) {
-          await handleAddContact();
-        } else if (hasName || hasPhone) {
-          window.alert(
-            "שימו לב: פרטי איש הקשר שהתחלתם למלא לא נשמרו כי חסר שם או מספר טלפון (צריך למלא את שניהם, או ללחוץ 'הוסף' בנפרד). ניתן להוסיף אותו שוב בכניסה הבאה לעריכת האירוע."
-          );
-        }
+      // The "אנשי קשר" fields below are a separate, immediate-ish save
+      // (handleAddContact persists to the API when editing, or stashes into
+      // pendingContacts when creating) — they are not part of `form` and are
+      // never sent by this submit directly. That's not obvious from the UI:
+      // someone who types a contact's name+phone and then clicks "שמור" /
+      // "הוסף אירוע" directly (a completely natural expectation — "save the
+      // event" should mean "save everything I just filled in") had that
+      // contact silently discarded, with the whole dialog closing right
+      // after as if nothing was lost. This is what was actually behind the
+      // repeated "contacts aren't saved" reports. If a complete contact is
+      // sitting in the fields when the form is submitted, save/stash it too
+      // before closing; if it's only half-filled, warn instead of dropping it.
+      const hasName = !!contactForm.name.trim();
+      const hasPhone = !!contactForm.phone.trim();
+      if (hasName && hasPhone) {
+        await handleAddContact();
+      } else if (hasName || hasPhone) {
+        window.alert(
+          "שימו לב: פרטי איש הקשר שהתחלתם למלא לא נשמרו כי חסר שם או מספר טלפון (צריך למלא את שניהם, או ללחוץ 'הוסף' בנפרד)."
+        );
       }
-      await onSubmit(form);
+
+      const savedEvent = await onSubmit(form);
+
+      // Brand-new event: the contacts added above only exist locally
+      // (pendingContacts) until now, since they had no event_id to point at
+      // yet. Persist them against the event id we just got back.
+      if (!editing?.id && pendingContacts.length > 0 && savedEvent?.id) {
+        await Promise.all(pendingContacts.map((c) =>
+          base44.entities.EventContact.create({
+            event_id: savedEvent.id,
+            name: c.name,
+            phone: c.phone,
+            role_label: c.role_label,
+          })
+        ));
+      }
+
       onClose();
     } finally {
       setSaving(false);
@@ -114,7 +135,23 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
   };
 
   const handleAddContact = async () => {
-    if (!contactForm.name.trim() || !contactForm.phone.trim() || !editing?.id) return;
+    if (!contactForm.name.trim() || !contactForm.phone.trim()) return;
+    if (!editing?.id) {
+      // Creating a new event: no event_id to save against yet — hold the
+      // contact locally and persist it once the event itself is created
+      // (see handleSubmit).
+      setPendingContacts((prev) => [
+        ...prev,
+        {
+          tempId: `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          name: contactForm.name.trim(),
+          phone: contactForm.phone.trim(),
+          role_label: contactForm.role_label.trim() || null,
+        },
+      ]);
+      setContactForm({ name: "", phone: "", role_label: "" });
+      return;
+    }
     setSavingContact(true);
     try {
       await base44.entities.EventContact.create({
@@ -133,6 +170,10 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
     } finally {
       setSavingContact(false);
     }
+  };
+
+  const handleDeletePendingContact = (tempId) => {
+    setPendingContacts((prev) => prev.filter((c) => c.tempId !== tempId));
   };
 
   // Contact-form inputs live inside the outer <form onSubmit={handleSubmit}>
@@ -375,137 +416,144 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
             </div>
           )}
 
-          {editing?.id ? (
-            <div className="border-t pt-4 space-y-4">
-              <div className="flex items-center gap-2">
-                <BellRing className="w-4 h-4 text-slate-700" />
-                <p className="text-sm font-semibold text-slate-700">אנשי קשר ואישורי הגעה</p>
-                {loadingExtras && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
-              </div>
-
-              <div className="space-y-2">
-                <Label>שעות לפני האירוע לשליחת תזכורת</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.reminder_offset_minutes ? Math.round(form.reminder_offset_minutes / 60 * 10) / 10 : ""}
-                  onChange={(e) => setForm({ ...form, reminder_offset_minutes: e.target.value ? Math.round(Number(e.target.value) * 60) : null })}
-                  placeholder="1.5"
-                />
-                <p className="text-xs text-muted-foreground">
-                  לדוגמה 1.5 שעות = תזכורת לאישור תישלח שעה וחצי לפני מועד האירוע. יש לשמור את הטופס כדי לעדכן.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>פלוגות שצריכות לאשר</Label>
-                  <div className="flex gap-1">
-                    <button type="button" onClick={() => setAllPlugotConfirmation(true)} className="text-xs text-blue-600 hover:underline">
-                      בחר הכל
-                    </button>
-                    <span className="text-xs text-muted-foreground">/</span>
-                    <button type="button" onClick={() => setAllPlugotConfirmation(false)} className="text-xs text-slate-500 hover:underline">
-                      נקה הכל
-                    </button>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {PLUGOT.map((p) => {
-                    const selected = confirmations.some((c) => c.pluga === p);
-                    const confirmedByPluga = confirmations.find((c) => c.pluga === p)?.confirmed;
-                    const color = PLUGA_COLORS[p];
-                    return (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => togglePlugaConfirmation(p)}
-                        className={cn(
-                          "px-3 py-1.5 rounded-full text-sm font-medium border transition-colors flex items-center gap-1.5",
-                          selected
-                            ? cn(color?.light, color?.border)
-                            : "bg-white border-border text-muted-foreground hover:bg-slate-50"
-                        )}
-                      >
-                        {p}
-                        {selected && (confirmedByPluga ? " ✓" : "")}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  כל פלוגה שנבחרה תראה תזכורת ותוכל לאשר בעמוד "המשימות שלי" שלה.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label>אנשי קשר (למשל נהג הסעה)</Label>
-                {contacts.length > 0 && (
-                  <div className="space-y-1.5">
-                    {contacts.map((c) => (
-                      <div key={c.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 bg-white">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {c.name}
-                            {c.role_label && <span className="text-xs text-muted-foreground"> · {c.role_label}</span>}
-                          </p>
-                          <a href={`tel:${c.phone}`} className="text-xs text-blue-600 flex items-center gap-1">
-                            <Phone className="w-3 h-3" />
-                            {c.phone}
-                          </a>
-                        </div>
-                        <button type="button" onClick={() => handleDeleteContact(c.id)} className="shrink-0 p-1.5 rounded-lg hover:bg-red-50 text-red-500">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="flex flex-wrap gap-2 items-end">
-                  <div className="space-y-1 flex-1 min-w-[100px]">
-                    <Input
-                      value={contactForm.name}
-                      onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
-                      onKeyDown={handleContactKeyDown}
-                      placeholder="שם"
-                    />
-                  </div>
-                  <div className="space-y-1 flex-1 min-w-[100px]">
-                    <Input
-                      type="tel"
-                      value={contactForm.phone}
-                      onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
-                      onKeyDown={handleContactKeyDown}
-                      placeholder="טלפון"
-                    />
-                  </div>
-                  <div className="space-y-1 flex-1 min-w-[100px]">
-                    <Input
-                      value={contactForm.role_label}
-                      onChange={(e) => setContactForm({ ...contactForm, role_label: e.target.value })}
-                      onKeyDown={handleContactKeyDown}
-                      placeholder="תפקיד (אופציונלי)"
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={handleAddContact}
-                    disabled={savingContact || !contactForm.name.trim() || !contactForm.phone.trim()}
-                    className="gap-1"
-                  >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    הוסף
-                  </Button>
-                </div>
-              </div>
+          <div className="border-t pt-4 space-y-4">
+            <div className="flex items-center gap-2">
+              <BellRing className="w-4 h-4 text-slate-700" />
+              <p className="text-sm font-semibold text-slate-700">אנשי קשר ואישורי הגעה</p>
+              {loadingExtras && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
             </div>
-          ) : (
-            <p className="text-xs text-muted-foreground border-t pt-3">
-              ניתן להוסיף אנשי קשר ואישורי הגעה לאחר שמירת האירוע (פתח לעריכה שוב).
-            </p>
-          )}
+
+            {editing?.id && (
+              <>
+                <div className="space-y-2">
+                  <Label>שעות לפני האירוע לשליחת תזכורת</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={form.reminder_offset_minutes ? Math.round(form.reminder_offset_minutes / 60 * 10) / 10 : ""}
+                    onChange={(e) => setForm({ ...form, reminder_offset_minutes: e.target.value ? Math.round(Number(e.target.value) * 60) : null })}
+                    placeholder="1.5"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    לדוגמה 1.5 שעות = תזכורת לאישור תישלח שעה וחצי לפני מועד האירוע. יש לשמור את הטופס כדי לעדכן.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>פלוגות שצריכות לאשר</Label>
+                    <div className="flex gap-1">
+                      <button type="button" onClick={() => setAllPlugotConfirmation(true)} className="text-xs text-blue-600 hover:underline">
+                        בחר הכל
+                      </button>
+                      <span className="text-xs text-muted-foreground">/</span>
+                      <button type="button" onClick={() => setAllPlugotConfirmation(false)} className="text-xs text-slate-500 hover:underline">
+                        נקה הכל
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {PLUGOT.map((p) => {
+                      const selected = confirmations.some((c) => c.pluga === p);
+                      const confirmedByPluga = confirmations.find((c) => c.pluga === p)?.confirmed;
+                      const color = PLUGA_COLORS[p];
+                      return (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => togglePlugaConfirmation(p)}
+                          className={cn(
+                            "px-3 py-1.5 rounded-full text-sm font-medium border transition-colors flex items-center gap-1.5",
+                            selected
+                              ? cn(color?.light, color?.border)
+                              : "bg-white border-border text-muted-foreground hover:bg-slate-50"
+                          )}
+                        >
+                          {p}
+                          {selected && (confirmedByPluga ? " ✓" : "")}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    כל פלוגה שנבחרה תראה תזכורת ותוכל לאשר בעמוד "המשימות שלי" שלה.
+                  </p>
+                </div>
+              </>
+            )}
+
+            <div className="space-y-2">
+              <Label>אנשי קשר (למשל נהג הסעה)</Label>
+              {(editing?.id ? contacts : pendingContacts).length > 0 && (
+                <div className="space-y-1.5">
+                  {(editing?.id ? contacts : pendingContacts).map((c) => (
+                    <div key={c.id || c.tempId} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 bg-white">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {c.name}
+                          {c.role_label && <span className="text-xs text-muted-foreground"> · {c.role_label}</span>}
+                        </p>
+                        <a href={`tel:${c.phone}`} className="text-xs text-blue-600 flex items-center gap-1">
+                          <Phone className="w-3 h-3" />
+                          {c.phone}
+                        </a>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => (editing?.id ? handleDeleteContact(c.id) : handleDeletePendingContact(c.tempId))}
+                        className="shrink-0 p-1.5 rounded-lg hover:bg-red-50 text-red-500"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-2 items-end">
+                <div className="space-y-1 flex-1 min-w-[100px]">
+                  <Input
+                    value={contactForm.name}
+                    onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                    onKeyDown={handleContactKeyDown}
+                    placeholder="שם"
+                  />
+                </div>
+                <div className="space-y-1 flex-1 min-w-[100px]">
+                  <Input
+                    type="tel"
+                    value={contactForm.phone}
+                    onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
+                    onKeyDown={handleContactKeyDown}
+                    placeholder="טלפון"
+                  />
+                </div>
+                <div className="space-y-1 flex-1 min-w-[100px]">
+                  <Input
+                    value={contactForm.role_label}
+                    onChange={(e) => setContactForm({ ...contactForm, role_label: e.target.value })}
+                    onKeyDown={handleContactKeyDown}
+                    placeholder="תפקיד (אופציונלי)"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleAddContact}
+                  disabled={savingContact || !contactForm.name.trim() || !contactForm.phone.trim()}
+                  className="gap-1"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  הוסף
+                </Button>
+              </div>
+              {!editing?.id && (
+                <p className="text-xs text-muted-foreground">
+                  אנשי הקשר יישמרו יחד עם האירוע. אישורי הגעה ותזכורות יהיו זמינים לאחר השמירה (פתח לעריכה שוב).
+                </p>
+              )}
+            </div>
+          </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>

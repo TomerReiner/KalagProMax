@@ -61,7 +61,19 @@ export function updateMockProfile(patch) {
 }
 
 function matchesQuery(row, query) {
-  return Object.entries(query).every(([key, value]) => row[key] === value);
+  return Object.entries(query).every(([key, value]) => {
+    // Mirrors base44Client.js's range-query support ({ gte, lte, gt, lt })
+    // so test mode behaves the same as the real Supabase-backed filter().
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const v = row[key];
+      if ("gte" in value && !(v >= value.gte)) return false;
+      if ("lte" in value && !(v <= value.lte)) return false;
+      if ("gt" in value && !(v > value.gt)) return false;
+      if ("lt" in value && !(v < value.lt)) return false;
+      return true;
+    }
+    return row[key] === value;
+  });
 }
 
 function applySort(rows, sort) {

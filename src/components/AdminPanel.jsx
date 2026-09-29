@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import { UserCog, Check, X, Loader2, Mail, Users, FlaskConical, RotateCcw, LogOut, ChevronDown, ChevronUp } from "lucide-react";
+import { UserCog, Check, X, Loader2, Mail, Users, FlaskConical, RotateCcw, LogOut, ChevronDown, ChevronUp, Megaphone, Send, Trash2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { PLUGOT, PLUGA_COLORS } from "@/lib/constants";
 import { usePreviewRole } from "@/lib/previewRoleContext";
 import { cn } from "@/lib/utils";
@@ -31,6 +33,11 @@ export default function AdminPanel() {
   const [permissions, setPermissions] = useState([]);
   const [expandedUser, setExpandedUser] = useState(null);
   const [togglingPerm, setTogglingPerm] = useState(null);
+  const [announcements, setAnnouncements] = useState([]);
+  const [annTitle, setAnnTitle] = useState("");
+  const [annBody, setAnnBody] = useState("");
+  const [publishing, setPublishing] = useState(false);
+  const [deletingAnn, setDeletingAnn] = useState(null);
   const { toast } = useToast();
   const { previewRole, setPreviewRole, previewPluga, setPreviewPluga } = usePreviewRole();
 
@@ -67,14 +74,24 @@ export default function AdminPanel() {
     }
   }, []);
 
+  const loadAnnouncements = useCallback(async () => {
+    try {
+      const data = await base44.entities.Announcement.list("-created_date", 100);
+      setAnnouncements(data);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     if (user?.role !== "admin") return;
     loadRequests();
     loadUsers();
     loadPermissions();
+    loadAnnouncements();
     const unsubscribe = base44.entities.AccessRequest.subscribe(() => loadRequests());
     return unsubscribe;
-  }, [user, loadRequests, loadUsers, loadPermissions]);
+  }, [user, loadRequests, loadUsers, loadPermissions, loadAnnouncements]);
 
   if (user?.role !== "admin") return null;
 
@@ -193,6 +210,49 @@ export default function AdminPanel() {
     }
   };
 
+  // Creates the announcement row (same client-side pattern every other
+  // admin-managed table here uses), then asks the server to actually push it
+  // out — that part needs the VAPID private key, so it can't happen in the
+  // browser (see api/publish-announcement.js).
+  const handlePublishAnnouncement = async () => {
+    if (!annTitle.trim() || !annBody.trim()) return;
+    setPublishing(true);
+    try {
+      const created = await base44.entities.Announcement.create({
+        title: annTitle.trim(),
+        body: annBody.trim(),
+      });
+      setAnnTitle("");
+      setAnnBody("");
+      await loadAnnouncements();
+      try {
+        const result = await base44.functions.invoke("publishAnnouncement", { announcement_id: created.id });
+        toast({ title: "ההודעה פורסמה ונשלחה כהתראה", description: `נשלח ל-${result.sent} מכשירים`, duration: 3000 });
+      } catch (pushErr) {
+        // The announcement itself is saved either way — it'll show up in
+        // everyone's notifications bell — only the phone-push part failed.
+        toast({ title: "ההודעה נשמרה, אך שליחת ההתראה נכשלה", description: pushErr.message, variant: "destructive" });
+      }
+    } catch (err) {
+      console.error(err);
+      toast({ title: "שגיאה בפרסום ההודעה", description: err.message, variant: "destructive" });
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const handleDeleteAnnouncement = async (id) => {
+    setDeletingAnn(id);
+    try {
+      await base44.entities.Announcement.delete(id);
+      await loadAnnouncements();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeletingAnn(null);
+    }
+  };
+
   const currentRole = (id) => roleOverrides[id] || "קלפ";
 
   return (
@@ -233,6 +293,12 @@ export default function AdminPanel() {
             className={cn("px-4 py-2 text-sm font-medium border-b-2 transition-colors", tab === "preview" ? "border-primary text-primary" : "border-transparent text-muted-foreground")}
           >
             תצוגה
+          </button>
+          <button
+            onClick={() => setTab("announcements")}
+            className={cn("px-4 py-2 text-sm font-medium border-b-2 transition-colors", tab === "announcements" ? "border-primary text-primary" : "border-transparent text-muted-foreground")}
+          >
+            הודעות
           </button>
         </div>
 
@@ -527,6 +593,68 @@ export default function AdminPanel() {
                   )}
                 </div>
               ))
+            )}
+          </div>
+        )}
+
+        {tab === "announcements" && (
+          <div className="mt-4 space-y-4">
+            <div className="border rounded-lg p-3 bg-white space-y-3">
+              <div className="flex items-center gap-1.5 text-sm font-medium">
+                <Megaphone className="w-4 h-4" />
+                הודעה חדשה
+              </div>
+              <Input
+                value={annTitle}
+                onChange={(e) => setAnnTitle(e.target.value)}
+                placeholder="כותרת ההודעה"
+              />
+              <Textarea
+                value={annBody}
+                onChange={(e) => setAnnBody(e.target.value)}
+                placeholder="תוכן ההודעה"
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">
+                ההודעה תופיע להתראות אצל כל המשתמשים, ותישלח גם כהתראת Push למכשירים שנרשמו (ראו "אזור אישי").
+              </p>
+              <Button
+                onClick={handlePublishAnnouncement}
+                disabled={publishing || !annTitle.trim() || !annBody.trim()}
+                className="w-full gap-1.5"
+              >
+                {publishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                פרסם ושלח התראה
+              </Button>
+            </div>
+
+            {announcements.length === 0 ? (
+              <div className="text-center py-10 text-muted-foreground">
+                <Megaphone className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                <p className="text-sm font-medium">אין הודעות עדיין</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {announcements.map((a) => (
+                  <div key={a.id} className="border rounded-lg p-3 bg-white space-y-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-medium text-sm">{a.title}</p>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAnnouncement(a.id)}
+                        disabled={deletingAnn === a.id}
+                        className="shrink-0 p-1 rounded hover:bg-red-50 text-red-500"
+                      >
+                        {deletingAnn === a.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-muted-foreground whitespace-pre-wrap">{a.body}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {new Date(a.created_date).toLocaleString("he-IL")}
+                    </p>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}

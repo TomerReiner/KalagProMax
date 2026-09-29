@@ -61,7 +61,20 @@ function makeEntity(table, { stampOwner = true } = {}) {
       if (m) return m.filter(query, sort, limit);
       let q = supabase.from(table).select('*');
       for (const [key, value] of Object.entries(query)) {
-        q = q.eq(key, value);
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          // Range query: { gte, lte, gt, lt } — e.g. fetching a date range for
+          // Klaf.jsx's "today through Saturday" task list. The *_date columns
+          // this is used against are all plain 'YYYY-MM-DD' text, which
+          // compares lexicographically the same as chronologically, so plain
+          // Postgres comparison operators work. Any subset of the four keys
+          // may be given.
+          if ('gte' in value) q = q.gte(key, value.gte);
+          if ('lte' in value) q = q.lte(key, value.lte);
+          if ('gt' in value) q = q.gt(key, value.gt);
+          if ('lt' in value) q = q.lt(key, value.lt);
+        } else {
+          q = q.eq(key, value);
+        }
       }
       q = applySort(q, sort);
       if (limit) q = q.limit(limit);
@@ -158,6 +171,16 @@ const entities = {
   // current quantity per pluga+item, feeding the "צור הזמנות לחוסרים" action
   // in src/pages/Playbox.jsx.
   PlayboxItem: makeEntity('playbox_items'),
+  // Admin broadcast announcements (see
+  // supabase/migrations/0017_announcements.sql) — created here client-side
+  // (readable by everyone, writable by admins only, same pattern as every
+  // other admin-managed table), then api/publish-announcement.js is invoked
+  // separately to actually push-notify every subscribed device.
+  Announcement: makeEntity('announcements'),
+  // Web Push subscriptions (see supabase/migrations/0016_push_subscriptions.sql).
+  // Not normally touched directly — api/push-subscribe.js / push-unsubscribe.js
+  // write here with the service-role key — but exposed for completeness.
+  PushSubscription: makeEntity('push_subscriptions', { stampOwner: false }),
 };
 
 // ---------------------------------------------------------------------------
