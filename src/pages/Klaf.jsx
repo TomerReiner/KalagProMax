@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { plugotFor, effectivePermissions } from "@/lib/permissions";
 import { getFoodPickupState, FOOD_PICKUP_STATE_LABELS } from "@/lib/eventConfirmations";
 import KlafMealRegulators from "@/components/klaf/KlafMealRegulators";
+import { usePageTitleOverride } from "@/lib/pageTitleContext";
 
 const WEEKDAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 
@@ -245,6 +246,21 @@ export default function Klaf() {
   };
 
   const goToday = () => setSelectedDate(new Date());
+
+  // AppLayout's title bar shows "המשימות שלי" for this route by default
+  // (src/lib/pageTitles.js), but this same route renders a completely
+  // different, much narrower page below (see isDelegatedOnly further down)
+  // for someone who only holds the delegated meal_regulators permission —
+  // that view should say "מווסתים" instead. usePageTitleOverride is a hook,
+  // so it has to be called unconditionally, before any of this component's
+  // early returns below — hence this small early (and null-safe, since
+  // `user` may still be loading) recomputation of the same isDelegatedOnly
+  // condition computed again, in full, further down once `user` is known.
+  const earlyEffectiveRole = previewRole || user?.role;
+  const earlyIsKlaf = earlyEffectiveRole === "קלפ";
+  const earlyDelegatedPermissions = effectivePermissions(myPermissions, user?.role);
+  const earlyIsDelegatedOnly = !earlyIsKlaf && plugotFor(earlyDelegatedPermissions, "meal_regulators").length > 0;
+  usePageTitleOverride(earlyIsDelegatedOnly ? "מווסתים" : null, earlyIsDelegatedOnly ? UtensilsCrossed : null);
 
   if (!user) {
     return (
