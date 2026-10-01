@@ -240,9 +240,9 @@ export function buildFixtures() {
     { id: "60000000-0000-4000-8000-000000000004", warehouse: "מחסן קרביץ", name: "אפודי קרביץ", quantity: 45, returnable: true, ...stamp },
     { id: "60000000-0000-4000-8000-000000000005", warehouse: "מחסן קרביץ", name: "קסדות", quantity: 40, returnable: true, ...stamp },
     { id: "60000000-0000-4000-8000-000000000006", warehouse: "מחסן קרביץ", name: "רתמות", quantity: 25, returnable: true, ...stamp },
-    { id: "60000000-0000-4000-8000-000000000007", warehouse: "מחסן לוגיסטי", name: "גנרטור", quantity: 3, returnable: true, ...stamp },
-    { id: "60000000-0000-4000-8000-000000000008", warehouse: "מחסן לוגיסטי", name: "פנסי ראש", quantity: 35, returnable: false, ...stamp },
-    { id: "60000000-0000-4000-8000-000000000009", warehouse: "מחסן לוגיסטי", name: "חבלים", quantity: 20, returnable: false, ...stamp },
+    { id: "60000000-0000-4000-8000-000000000007", warehouse: "מחסן קליר", name: "גנרטור", quantity: 3, returnable: true, ...stamp },
+    { id: "60000000-0000-4000-8000-000000000008", warehouse: "מחסן קליר", name: "פנסי ראש", quantity: 35, returnable: false, ...stamp },
+    { id: "60000000-0000-4000-8000-000000000009", warehouse: "מחסן קליר", name: "חבלים", quantity: 20, returnable: false, ...stamp },
   ];
 
   const equipment_holdings = [
@@ -251,7 +251,7 @@ export function buildFixtures() {
     // Overdue — expected_return_date already passed, still checked out
     { id: "61000000-0000-4000-8000-000000000002", item_name: "אפודי קרביץ", warehouse: "מחסן קרביץ", quantity: 10, pluga: "בשור", held_by_name: 'סמל בשור', withdrawal_date: dateStr(dayOffset(-10)), expected_return_date: dateStr(dayOffset(-3)), ...stamp },
     // Open-ended — no expected return date at all
-    { id: "61000000-0000-4000-8000-000000000003", item_name: "גנרטור", warehouse: "מחסן לוגיסטי", quantity: 1, pluga: "רמון", held_by_name: 'קצין רמון', withdrawal_date: dateStr(dayOffset(-2)), expected_return_date: null, ...stamp },
+    { id: "61000000-0000-4000-8000-000000000003", item_name: "גנרטור", warehouse: "מחסן קליר", quantity: 1, pluga: "רמון", held_by_name: 'קצין רמון', withdrawal_date: dateStr(dayOffset(-2)), expected_return_date: null, ...stamp },
   ];
 
   const equipment_settings = [
@@ -263,7 +263,7 @@ export function buildFixtures() {
     { id: "63000000-0000-4000-8000-000000000001", warehouse: "מחסן קרביץ", items: [{ name: "קסדות", quantity: 15, returnable: true }], requested_by_name: "טוראי תמר", pluga: "תמר", request_date: dateStr(D0), expected_return_date: dateStr(D3), notes: "לאימון סוף שבוע", status: "pending", approved_by_name: null, ...stamp },
     { id: "63000000-0000-4000-8000-000000000002", warehouse: "מכולה", items: [{ name: "כיסאות מתקפלים", quantity: 30, returnable: false }], requested_by_name: "טוראי צין", pluga: "צין", request_date: dateStr(D0), expected_return_date: null, notes: null, status: "pending", approved_by_name: null, ...stamp },
     // approved
-    { id: "63000000-0000-4000-8000-000000000003", warehouse: "מחסן לוגיסטי", items: [{ name: "פנסי ראש", quantity: 10, returnable: false }], requested_by_name: "סמל פארן", pluga: "פארן", request_date: dateStr(dayOffset(-1)), expected_return_date: null, notes: null, status: "approved", approved_by_name: "מנהל מצב בדיקה", ...stamp },
+    { id: "63000000-0000-4000-8000-000000000003", warehouse: "מחסן קליר", items: [{ name: "פנסי ראש", quantity: 10, returnable: false }], requested_by_name: "סמל פארן", pluga: "פארן", request_date: dateStr(dayOffset(-1)), expected_return_date: null, notes: null, status: "approved", approved_by_name: "מנהל מצב בדיקה", ...stamp },
     // rejected
     { id: "63000000-0000-4000-8000-000000000004", warehouse: "מחסן קרביץ", items: [{ name: "רתמות", quantity: 5, returnable: true }], requested_by_name: "רב\"ט בשור", pluga: "בשור", request_date: dateStr(dayOffset(-2)), expected_return_date: dateStr(D1), notes: "אין מספיק מלאי כרגע", status: "rejected", approved_by_name: "מנהל מצב בדיקה", ...stamp },
   ];

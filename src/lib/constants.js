@@ -4,7 +4,12 @@ export const PLUGOT = ["פארן", "בשור", "צין", "רמון", "תמר"];
 // from here (rather than kept as a local const in Equipment.jsx, as it used
 // to be) so Playbox.jsx can offer the same 3 destinations when marking an
 // order "התקבל" — see supabase/migrations/0010_playbox_orders_destination_warehouse.sql.
-export const WAREHOUSES = ["מכולה", "מחסן קרביץ", "מחסן לוגיסטי"];
+// "מחסן קליר" was renamed from "מחסן לוגיסטי" — see
+// supabase/migrations/0018_warehouse_rename_and_playbox_order_approval.sql,
+// which renames every existing row's value to match (this string is used
+// directly as the stored value throughout the app, not just a display
+// label, so the rename had to happen in the data too, not just here).
+export const WAREHOUSES = ["מכולה", "מחסן קרביץ", "מחסן קליר"];
 
 export const LOCATIONS = [
   "מגורים כללי",

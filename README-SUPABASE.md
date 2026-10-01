@@ -92,7 +92,7 @@ checklist — do these steps in order.
   migration file; nothing here fixes that (it's a schema question, not a
   data-import one) but it's worth reconciling separately.
 - `src/lib/constants.js` now exports `WAREHOUSES` (the 3 physical
-  warehouses: מכולה / מחסן קרביץ / מחסן לוגיסטי), moved there from a local
+  warehouses: מכולה / מחסן קרביץ / מחסן קליר), moved there from a local
   const in `src/pages/Equipment.jsx` so `src/pages/Playbox.jsx` can offer the
   same 3 destinations. No behavior change for Equipment itself.
 - General tasks (`src/pages/Tasks.jsx`, the backlog list) got a straight
@@ -455,7 +455,7 @@ was folded into wherever it naturally belongs in the app instead:
   button (in addition to the status dropdown, for anyone who prefers
   that); either one opens a small "לאן ההזמנה הולכת?" dialog asking which
   of the 3 physical warehouses (`WAREHOUSES` in `src/lib/constants.js` —
-  the same מכולה / מחסן קרביץ / מחסן לוגיסטי as `/equipment`) the goods
+  the same מכולה / מחסן קרביץ / מחסן קליר as `/equipment`) the goods
   actually went into
   (`supabase/migrations/0010_playbox_orders_destination_warehouse.sql`,
   `playbox_orders.destination_warehouse`). Confirming a warehouse credits

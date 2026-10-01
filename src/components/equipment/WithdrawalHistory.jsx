@@ -44,23 +44,37 @@ export default function WithdrawalHistory({ open, onClose }) {
     });
   }, [withdrawals, plugaFilter, statusFilter]);
 
+  const toExcelRow = (w) => ({
+    "מבקש": w.requested_by_name || "",
+    "פלוגה": w.pluga || "",
+    "מחסן": w.warehouse || "",
+    "תאריך בקשה": w.request_date || "",
+    "תאריך החזרה צפוי": w.expected_return_date || "",
+    "סטטוס": STATUS_LABELS[w.status] || w.status || "",
+    "מאשר": w.approved_by_name || "",
+    "פריטים": (w.items || []).map((i) => `${i.name} ×${i.quantity}${i.returnable ? " (להחזרה)" : ""}`).join(", "),
+    "הערות": w.notes || "",
+  });
+  const EXCEL_COLS = [{ wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 40 }, { wch: 30 }];
+
   const exportToExcel = () => {
-    const data = filtered.map((w) => ({
-      "מבקש": w.requested_by_name || "",
-      "פלוגה": w.pluga || "",
-      "מחסן": w.warehouse || "",
-      "תאריך בקשה": w.request_date || "",
-      "תאריך החזרה צפוי": w.expected_return_date || "",
-      "סטטוס": STATUS_LABELS[w.status] || w.status || "",
-      "מאשר": w.approved_by_name || "",
-      "פריטים": (w.items || []).map((i) => `${i.name} ×${i.quantity}${i.returnable ? " (להחזרה)" : ""}`).join(", "),
-      "הערות": w.notes || "",
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    ws["!cols"] = [{ wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 40 }, { wch: 30 }];
+    const ws = XLSX.utils.json_to_sheet(filtered.map(toExcelRow));
+    ws["!cols"] = EXCEL_COLS;
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "משיכות ציוד");
     XLSX.writeFile(wb, "משיכות_ציוד.xlsx");
+  };
+
+  // Export just one withdrawal (feature request: "לאפשר לייצא משיכת ציוד
+  // בודדת מהיסטוריית המשיכות לאקסל") — same column shape as the bulk export
+  // above, just a single-row sheet.
+  const exportOneToExcel = (w) => {
+    const ws = XLSX.utils.json_to_sheet([toExcelRow(w)]);
+    ws["!cols"] = EXCEL_COLS;
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "משיכת ציוד");
+    const datePart = w.request_date ? `_${w.request_date}` : "";
+    XLSX.writeFile(wb, `משיכת_ציוד_${w.requested_by_name || "ללא_שם"}${datePart}.xlsx`);
   };
 
   return (
@@ -117,6 +131,14 @@ export default function WithdrawalHistory({ open, onClose }) {
                     <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", STATUS_STYLES[w.status] || "bg-muted")}>
                       {STATUS_LABELS[w.status] || w.status}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => exportOneToExcel(w)}
+                      className="p-1 rounded hover:bg-slate-100 transition-colors"
+                      title="ייצוא משיכה זו לאקסל"
+                    >
+                      <Download className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">

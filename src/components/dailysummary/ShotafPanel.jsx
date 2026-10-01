@@ -1,18 +1,21 @@
-// Unrouted — left on disk but no longer imported from src/App.jsx, same
-// convention as src/pages/Delegations.jsx. This page's content moved into
-// src/components/dailysummary/ShotafPanel.jsx, now rendered as the "שוטף"
-// tab of src/pages/DailySummary.jsx (merged with "סיכום מסדר" into one tab,
-// per the feature request, with editing now gated by the shotaf_schedule
-// permission instead of being admin-only — see src/lib/permissions.js).
 import React, { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
-import { Loader2, Sun, Sunset, Moon, ChevronRight, ChevronLeft } from "lucide-react";
+import { Loader2, Sun, Sunset, Moon, ChevronRight, ChevronLeft, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PLUGOT, PLUGA_COLORS, SHOTAF_OPTIONS, formatHebrewDate, toDateStr, getShotafTime } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
-export default function Shotaf() {
+// "שוטף" — day-by-day assignment of which pluga covers frisa/cleaning/
+// morning-assembly. Used to be its own page (src/pages/Shotaf.jsx, now
+// unrouted) with its own top-nav item visible to admins only; it's now the
+// second tab of src/pages/DailySummary.jsx, viewable by every role but only
+// EDITABLE by whoever holds the shotaf_schedule permission (or is admin) —
+// see that file and src/lib/permissions.js. `editable` controls exactly
+// that: when false every control here is inert (disabled selects/buttons,
+// no onClick/onValueChange firing) rather than hidden, so a viewer without
+// the permission still sees the day's assignments, just can't change them.
+export default function ShotafPanel({ editable }) {
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const selectedDateStr = toDateStr(selectedDate);
   const [routine, setRoutine] = useState(null);
@@ -22,11 +25,7 @@ export default function Shotaf() {
   const loadRoutine = useCallback(async () => {
     try {
       const data = await base44.entities.DailyRoutine.filter({ routine_date: selectedDateStr });
-      if (data.length > 0) {
-        setRoutine(data[0]);
-      } else {
-        setRoutine(null);
-      }
+      setRoutine(data.length > 0 ? data[0] : null);
     } finally {
       setLoading(false);
     }
@@ -37,6 +36,7 @@ export default function Shotaf() {
   }, [loadRoutine]);
 
   const updateField = async (field, value) => {
+    if (!editable) return;
     setSaving(field);
     try {
       if (!routine) {
@@ -100,13 +100,20 @@ export default function Shotaf() {
   ];
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+    <div className="space-y-6">
+      {!editable && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-slate-50 border border-border rounded-lg p-2.5">
+          <Lock className="w-3.5 h-3.5 shrink-0" />
+          <span>לצפייה בלבד — לעריכת השוטף נדרשת הרשאה מיוחדת (אדמין יכול להעניק דרך "ניהול משתמשים ובקשות גישה")</span>
+        </div>
+      )}
+
       <div className="text-center">
         <div className="flex items-center justify-center gap-3 mb-1">
           <Button variant="outline" size="icon" onClick={goPrevDay}>
             <ChevronRight className="w-5 h-5" />
           </Button>
-          <h1 className="text-2xl font-bold">{formatHebrewDate(selectedDate)}</h1>
+          <h2 className="text-xl font-bold">{formatHebrewDate(selectedDate)}</h2>
           <Button variant="outline" size="icon" onClick={goNextDay}>
             <ChevronLeft className="w-5 h-5" />
           </Button>
@@ -127,7 +134,7 @@ export default function Shotaf() {
             <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
               <Sun className="w-5 h-5 text-slate-700" />
             </div>
-            <h2 className="text-base font-semibold flex-1">מסדר בוקר - פלוגות אחראיות</h2>
+            <h3 className="text-base font-semibold flex-1">מסדר בוקר - פלוגות אחראיות</h3>
             <span className={cn("text-xs px-2 py-1 rounded-full whitespace-nowrap", timeStr("morning_assembly_plugas") ? "text-muted-foreground bg-white" : "text-slate-500 bg-slate-200")}>
               {timeStr("morning_assembly_plugas") || "לא פעיל (שישי/שבת)"}
             </span>
@@ -140,7 +147,9 @@ export default function Shotaf() {
               return (
                 <button
                   key={p}
+                  disabled={!editable}
                   onClick={() => {
+                    if (!editable) return;
                     const current = routine?.morning_assembly_plugas || [];
                     const newValue = selected
                       ? current.filter((x) => x !== p)
@@ -149,6 +158,7 @@ export default function Shotaf() {
                   }}
                   className={cn(
                     "px-4 py-2 rounded-lg border-2 font-medium text-sm transition-all",
+                    !editable && "cursor-default opacity-90",
                     selected
                       ? `${color.bg} ${color.border} ${color.text}`
                       : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
@@ -174,7 +184,7 @@ export default function Shotaf() {
                 <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
                   <Icon className="w-5 h-5 text-slate-700" />
                 </div>
-                <h2 className="text-base font-semibold flex-1">{label}</h2>
+                <h3 className="text-base font-semibold flex-1">{label}</h3>
                 <span className={cn("text-xs px-2 py-1 rounded-full whitespace-nowrap", timeStr(field) ? "text-muted-foreground bg-white" : "text-slate-500 bg-slate-200")}>
                   {timeStr(field) || "לא פעיל (שישי/שבת)"}
                 </span>
@@ -183,6 +193,7 @@ export default function Shotaf() {
               <Select
                 value={routine?.[field] || "טרם הוחלט"}
                 onValueChange={(v) => updateField(field, v)}
+                disabled={!editable}
               >
                 <SelectTrigger className="bg-white">
                   <SelectValue placeholder="טרם הוחלט" />

@@ -62,6 +62,18 @@ export const PERMISSIONS = {
     description: "לערוך פריטי מחסן ולנהל בקשות משיכת ציוד עבור כל הפלוגות (כמו האחראי שהוגדר בהגדרות הציוד)",
     scoped: false,
   },
+  // "שוטף" (src/pages/DailySummary.jsx's שוטף tab, formerly its own
+  // src/pages/Shotaf.jsx page) — assigning which pluga covers frisa/cleaning/
+  // morning-assembly each day is org-wide, not per-pluga, so this is global
+  // like playbox_orders/equipment_manager rather than scoped. Everyone can
+  // still VIEW the tab; only a holder of this (or an admin) can change the
+  // assignments.
+  shotaf_schedule: {
+    key: "shotaf_schedule",
+    label: "עריכת שוטף",
+    description: "לערוך את שיבוץ המשימות היומיות (שוטף: פינת פריסה, ניקיונות, מסדר בוקר) עבור כל הפלוגות",
+    scoped: false,
+  },
 };
 
 export const PERMISSION_LIST = Object.values(PERMISSIONS);
@@ -100,14 +112,38 @@ export function plugotFor(userPermissions, key) {
 // Admins hold every delegated permission, for every pluga, automatically —
 // no explicit user_permissions row needed. Every page that checks a
 // signed-in user's permissions should run what it fetched through this
-// first: `effectivePermissions(rawRows, user.role)` — then pass the result
-// to hasPermission/hasAnyPermission/plugotFor exactly as before. Pass the
-// user's REAL role here, never a previewed one (see usePreviewRole) — the
-// admin-preview switcher is for seeing the app as another role, not for
-// handing that role an admin's permissions.
+// first: `effectivePermissions(rawRows, role)` — then pass the result to
+// hasPermission/hasAnyPermission/plugotFor exactly as before.
+//
+// Which role to pass depends on what the caller wants:
+//  - To show what the SIGNED-IN USER actually holds (e.g. "can I see the
+//    admin-only delete button"), pass their REAL role, never a previewed one
+//    (see usePreviewRole) — admin-preview is for seeing the app as another
+//    role, not for handing that role an admin's own permissions.
+//  - To show what the ADMIN-PREVIEW PANEL's chosen role would see (e.g. "is
+//    this delegated-permission-gated card visible"), pass previewRole ||
+//    role — see the call sites across AppLayout/TopNav/PersonalArea/
+//    Equipment/Klaf/Playbox, which all do exactly this so "תצוגת תפקיד" is a
+//    true preview of a plain member of that role (no permissions beyond what
+//    the admin doing the previewing personally holds — which is normally
+//    none, since admins don't need grants) rather than always showing every
+//    permission-gated feature because the real signed-in user is an admin.
+//
+// סגל holds playbox_orders by default (no explicit grant needed) — same
+// "automatic, not a real row" mechanism as the admin branch below, just for
+// one specific key instead of everything. An explicit per-user grant (rare —
+// mainly useful for revoking would need its own UI, which doesn't exist) is
+// harmless to also list here; hasPermission only checks whether a matching
+// row exists at all, so a duplicate doesn't change the result.
 export function effectivePermissions(userPermissions, role) {
-  if (role !== "admin") return Array.isArray(userPermissions) ? userPermissions : [];
-  return PERMISSION_LIST.flatMap((perm) =>
-    perm.scoped ? PLUGOT.map((pluga) => ({ permission: perm.key, pluga })) : [{ permission: perm.key, pluga: null }]
-  );
+  if (role === "admin") {
+    return PERMISSION_LIST.flatMap((perm) =>
+      perm.scoped ? PLUGOT.map((pluga) => ({ permission: perm.key, pluga })) : [{ permission: perm.key, pluga: null }]
+    );
+  }
+  const base = Array.isArray(userPermissions) ? userPermissions : [];
+  if (role === "סגל") {
+    return [...base, { permission: "playbox_orders", pluga: null }];
+  }
+  return base;
 }

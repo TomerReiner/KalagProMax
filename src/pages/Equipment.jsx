@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Package, Plus, History, Settings, Pencil, Trash2, Bell, BellRing, Download, PackageSearch } from "lucide-react";
+import { Loader2, Package, Plus, History, Settings, Pencil, Trash2, Bell, BellRing, Download, PackageSearch, Search, X } from "lucide-react";
 import * as XLSX from "xlsx";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { usePreviewRole } from "@/lib/previewRoleContext";
 import WarehouseItemForm from "@/components/equipment/WarehouseItemForm";
@@ -28,6 +29,10 @@ export default function Equipment() {
   const [permissionsLoading, setPermissionsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [activeWarehouse, setActiveWarehouse] = useState(WAREHOUSES[0]);
+  // Cross-warehouse item search (feature request: "לעשות חיפוש על כל
+  // המוצרים מכל המחסנים") — when non-empty, overrides the warehouse-tab
+  // filter below with a search across every warehouse's items at once.
+  const [search, setSearch] = useState("");
   const [itemFormOpen, setItemFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [withdrawalOpen, setWithdrawalOpen] = useState(false);
@@ -75,9 +80,10 @@ export default function Equipment() {
   const isAdmin = effectiveRole === "admin";
   const isKlaf = effectiveRole === "קלפ";
   const isResponsible = settings?.responsible_klaf_id === user?.id;
-  // effectivePermissions needs the user's REAL role (never a previewed one)
-  // so admin-preview never hands a previewed role an admin's permissions.
-  const myEffectivePermissions = effectivePermissions(myPermissions, user?.role);
+  // previewRole-aware — see the doc comment on effectivePermissions in
+  // src/lib/permissions.js (a true role preview should reflect a plain
+  // member of that role, not always the real signed-in admin's full access).
+  const myEffectivePermissions = effectivePermissions(myPermissions, effectiveRole);
   const isEquipmentManager = hasPermission(myEffectivePermissions, "equipment_manager");
   const canEdit = isAdmin || isResponsible || isEquipmentManager;
   const canAddItem = canEdit || isKlaf;
@@ -102,7 +108,14 @@ export default function Equipment() {
     );
   }
 
-  const warehouseItems = items.filter((i) => i.warehouse === activeWarehouse);
+  const normalizedSearch = search.trim().toLowerCase();
+  const isSearching = normalizedSearch.length > 0;
+  // While searching, this replaces the active-warehouse filter entirely and
+  // spans every warehouse at once — see the warehouse badge added per row
+  // below, since results can now mix warehouses.
+  const warehouseItems = isSearching
+    ? items.filter((i) => i.name.toLowerCase().includes(normalizedSearch))
+    : items.filter((i) => i.warehouse === activeWarehouse);
   // Across every warehouse, not just activeWarehouse — the shortage-orders
   // button above acts on all of them at once.
   const shortageCount = items.filter(
@@ -393,7 +406,26 @@ export default function Equipment() {
         </DialogContent>
       </Dialog>
 
-      <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
+      <div className="relative">
+        <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="חיפוש פריט בכל המחסנים..."
+          className="pr-9 pl-9"
+        />
+        {isSearching && (
+          <button
+            onClick={() => setSearch("")}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            title="נקה חיפוש"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      <div className={cn("flex gap-1 bg-slate-100 rounded-lg p-1 transition-opacity", isSearching && "opacity-40 pointer-events-none")}>
         {WAREHOUSES.map((w) => (
           <button
             key={w}
@@ -411,7 +443,7 @@ export default function Equipment() {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-muted-foreground">
-            פריטים במחסן ({warehouseItems.length})
+            {isSearching ? `תוצאות חיפוש (${warehouseItems.length})` : `פריטים במחסן (${warehouseItems.length})`}
           </h2>
           {canAddItem && (
             <Button
@@ -429,7 +461,7 @@ export default function Equipment() {
         </div>
         {warehouseItems.length === 0 ? (
           <div className="text-center py-10 text-muted-foreground border border-border rounded-xl bg-white">
-            <p className="text-sm">אין פריטים במחסן זה</p>
+            <p className="text-sm">{isSearching ? "לא נמצאו פריטים תואמים" : "אין פריטים במחסן זה"}</p>
           </div>
         ) : (
           <div className="space-y-2 max-h-[280px] overflow-y-auto pl-1">
@@ -439,7 +471,12 @@ export default function Equipment() {
                 className="flex items-center gap-3 bg-white border border-border rounded-lg p-3"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{item.name}</p>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-sm font-medium">{item.name}</p>
+                    {isSearching && (
+                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">{item.warehouse}</span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     כמות: {item.quantity}
                     {Number(item.target_quantity) > 0 && ` · יעד: ${item.target_quantity}`}
@@ -488,7 +525,13 @@ export default function Equipment() {
         open={itemFormOpen}
         onClose={() => setItemFormOpen(false)}
         onSubmit={handleItemSubmit}
-        warehouse={activeWarehouse}
+        // Editing an item found via the cross-warehouse search above must
+        // keep ITS OWN warehouse, not whichever tab happens to be active —
+        // WarehouseItemForm always saves with whatever `warehouse` it's
+        // given (see that file), so without this an edit from a search
+        // result would silently move the item to the active tab's
+        // warehouse.
+        warehouse={editingItem ? editingItem.warehouse : activeWarehouse}
         editingItem={editingItem}
         canSetTarget={canSetTargets}
       />

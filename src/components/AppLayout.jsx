@@ -1,9 +1,10 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import TopNav from "./TopNav";
 import AdminPanel from "./AdminPanel";
 import NotificationsBell from "./NotificationsBell";
+import PushAutoSubscribe from "./PushAutoSubscribe";
 import { usePreviewRole } from "@/lib/previewRoleContext";
 import { hasPermission, plugotFor, effectivePermissions } from "@/lib/permissions";
 import { PAGE_TITLES } from "@/lib/pageTitles";
@@ -17,19 +18,28 @@ const HEADER_IMAGE_URL = "https://media.base44.com/images/public/6aa1c4c872f2848
 // Role-based page allowlist. Delegated permissions (src/lib/permissions.js)
 // can widen this for a specific signed-in user regardless of role — see the
 // extraAllowedPages logic below, which adds "/playbox" for a playbox_orders
-// grant and "/klaf" for a meal_regulators grant (both personal, independent
-// of role, so any role might hold one).
+// grant (קלפ's own meal_regulators grant no longer adds "/klaf" here — every
+// קלפ already has it by role, and a non-קלפ delegated holder now reaches the
+// same isDelegatedOnly view through "אזור אישי" instead of a top-nav icon,
+// see src/pages/PersonalArea.jsx / src/components/TopNav.jsx).
+// "/daily-summary" (now "סיכום מסדר ושוטף" — see src/pages/DailySummary.jsx)
+// is reachable by every role: the שוטף half is still edit-gated by the
+// shotaf_schedule permission, but anyone can view it and everyone can edit
+// the סיכום מסדר half, so there's no reason to hide the tab itself. "/shotaf"
+// itself is gone — it used to be its own admin-only page/route (see
+// src/pages/Shotaf.jsx, now unrouted) before the two were merged into one
+// tabbed page.
 // "/personal" (אזור אישי) is reachable by every role — it's the new home for
-// the equipment/playbox links that used to be their own top-nav items (see
-// TopNav.jsx / src/pages/PersonalArea.jsx), plus push-notification opt-in
-// for everyone. "/equipment" and "/playbox" themselves stay in this
+// the equipment/playbox/מווסתים links that used to be their own top-nav
+// items (see TopNav.jsx / src/pages/PersonalArea.jsx), plus push-notification
+// opt-in for everyone. "/equipment" and "/playbox" themselves stay in this
 // allowlist for the roles that could already reach them, since PersonalArea
 // links straight into those pages rather than duplicating them.
 const ROLE_PAGES = {
-  admin: ["/", "/daily-summary", "/shotaf", "/constraints", "/tasks", "/statistics", "/equipment", "/personal"],
+  admin: ["/", "/daily-summary", "/constraints", "/tasks", "/statistics", "/equipment", "/personal"],
   קלפ: ["/", "/daily-summary", "/constraints", "/klaf", "/equipment", "/personal"],
-  רסר: ["/", "/constraints", "/statistics", "/personal"],
-  סגל: ["/", "/constraints", "/statistics", "/personal"],
+  רסר: ["/", "/daily-summary", "/constraints", "/statistics", "/personal"],
+  סגל: ["/", "/daily-summary", "/constraints", "/statistics", "/personal"],
 };
 
 const ROLE_DEFAULT_PAGE = {
@@ -59,6 +69,12 @@ function AppLayoutInner() {
   const [user, setUser] = useState(null);
   const [myPermissions, setMyPermissions] = useState([]);
   const { previewRole } = usePreviewRole();
+  // Fires the "land on my role's real default tab" redirect (see the effect
+  // below) exactly once per mount, i.e. once per full page load/login — not
+  // on every later navigation back to "/", which is still a legitimate nav
+  // target the person can click back to on purpose (see ROLE_ORDER in
+  // TopNav.jsx, which still lists "/" for every role).
+  const didInitialDefaultRedirect = useRef(false);
 
   useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
@@ -73,12 +89,32 @@ function AppLayoutInner() {
     if (!user) return;
     const effectiveRole = previewRole || user.role;
     const allowed = [...(ROLE_PAGES[effectiveRole] || [])];
-    // Admins hold every delegated permission automatically — use the REAL
-    // role here, never the previewed one, so previewing as another role
-    // never hands that role an admin's access (see effectivePermissions).
-    const delegatedPermissions = effectivePermissions(myPermissions, user.role);
+    // Previewing as another role should widen route access exactly the way
+    // that role actually would (e.g. a סגל previewer should see /playbox
+    // open by default, a רסר previewer should NOT unless that role would) —
+    // so this passes effectiveRole (previewRole when previewing, else the
+    // real role), not always the real role. See the long comment on
+    // effectivePermissions in src/lib/permissions.js for why this used to be
+    // "user.role" unconditionally and why that was wrong for a true preview.
+    const delegatedPermissions = effectivePermissions(myPermissions, effectiveRole);
     if (hasPermission(delegatedPermissions, "playbox_orders")) allowed.push("/playbox");
     if (plugotFor(delegatedPermissions, "meal_regulators").length > 0 && !allowed.includes("/klaf")) allowed.push("/klaf");
+
+    // Land on this role's real default tab once, right after login — "/" is
+    // itself an allowed page for every role (see ROLE_PAGES above), so
+    // without this a קלפ landing on "/" after signing in would just stay
+    // there instead of reaching "המשימות שלי" (/klaf), their intended
+    // default (see ROLE_DEFAULT_PAGE below). Only fires once per mount so
+    // deliberately navigating back to "/" via TopNav afterwards still works.
+    if (!didInitialDefaultRedirect.current) {
+      didInitialDefaultRedirect.current = true;
+      const roleDefault = ROLE_DEFAULT_PAGE[effectiveRole];
+      if (location.pathname === "/" && roleDefault && roleDefault !== "/" && allowed.includes(roleDefault)) {
+        navigate(roleDefault, { replace: true });
+        return;
+      }
+    }
+
     if (!allowed.includes(location.pathname)) {
       navigate(ROLE_DEFAULT_PAGE[effectiveRole] || "/", { replace: true });
     }
@@ -102,6 +138,7 @@ function AppLayoutInner() {
 
   return (
     <div dir="rtl" className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100/50 relative overflow-x-hidden">
+      <PushAutoSubscribe user={user} />
       <div
         className="fixed inset-0 pointer-events-none opacity-[0.05] bg-contain bg-center bg-no-repeat"
         style={{ backgroundImage: `url(${WATERMARK_URL})` }} />

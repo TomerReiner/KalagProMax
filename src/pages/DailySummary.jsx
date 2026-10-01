@@ -1,14 +1,18 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Trash2, ClipboardList, FileText, Copy } from "lucide-react";
+import { Loader2, Plus, Trash2, ClipboardList, FileText, Copy, Pencil, CalendarDays } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { LOCATIONS, PLUGOT, PLUGA_COLORS, formatHebrewDate, toDateStr } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { usePreviewRole } from "@/lib/previewRoleContext";
+import { hasPermission, effectivePermissions } from "@/lib/permissions";
+import ShotafPanel from "@/components/dailysummary/ShotafPanel";
 
 function parseEntries(entries) {
   if (!entries) return [];
@@ -31,16 +35,47 @@ function entryAreas(e) {
   return [];
 }
 
+// "סיכום מסדר" + "שוטף" merged into one tabbed page (feature request).
+// סיכום מסדר stays fully open — anyone who can reach this tab can create
+// AND edit a summary. שוטף (src/components/dailysummary/ShotafPanel.jsx,
+// formerly its own admin-only page, src/pages/Shotaf.jsx) is now viewable by
+// everyone here too, but only editable by whoever holds the new
+// shotaf_schedule permission (or is admin) — see src/lib/permissions.js.
 export default function DailySummaryPage() {
   const [summaries, setSummaries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [builderOpen, setBuilderOpen] = useState(false);
+  // Whether the open builder dialog is editing an existing summary
+  // (pre-filled from it, saved via update()) or starting a fresh one (saved
+  // via create()) — feature request: "לאפשר לעדכן סיכומי מסדר". Previously
+  // a summary could only ever be created, never revisited.
+  const [editingSummary, setEditingSummary] = useState(null);
   const [entries, setEntries] = useState([]);
   const [newAreas, setNewAreas] = useState([]);
   const [newPluga, setNewPluga] = useState("");
   const [newNotes, setNewNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
+
+  const [user, setUser] = useState(null);
+  const [myPermissions, setMyPermissions] = useState([]);
+  const { previewRole } = usePreviewRole();
+
+  useEffect(() => {
+    base44.auth.me().then(setUser).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!user?.id) { setMyPermissions([]); return; }
+    base44.entities.UserPermission.filter({ user_id: user.id }).then(setMyPermissions).catch(() => setMyPermissions([]));
+  }, [user?.id]);
+
+  const effectiveRole = previewRole || user?.role;
+  // previewRole-aware — see the doc comment on effectivePermissions in
+  // src/lib/permissions.js (a true role preview should reflect a plain
+  // member of that role, not always the real signed-in admin's full access).
+  const delegatedPermissions = effectivePermissions(myPermissions, effectiveRole);
+  const canEditShotaf = effectiveRole === "admin" || hasPermission(delegatedPermissions, "shotaf_schedule");
 
   const handleCopy = async (summary) => {
     const parsed = parseEntries(summary.entries);
@@ -89,15 +124,32 @@ export default function DailySummaryPage() {
     setEntries(entries.filter((_, i) => i !== idx));
   };
 
+  const openCreate = () => {
+    setEditingSummary(null);
+    setEntries([]);
+    setBuilderOpen(true);
+  };
+
+  const openEdit = (summary) => {
+    setEditingSummary(summary);
+    setEntries(parseEntries(summary.entries));
+    setBuilderOpen(true);
+  };
+
   const handleFinish = async () => {
     if (entries.length === 0) return;
     setSaving(true);
     try {
-      await base44.entities.DailySummary.create({
-        summary_date: toDateStr(new Date()),
-        entries: entries,
-      });
+      if (editingSummary) {
+        await base44.entities.DailySummary.update(editingSummary.id, { entries });
+      } else {
+        await base44.entities.DailySummary.create({
+          summary_date: toDateStr(new Date()),
+          entries: entries,
+        });
+      }
       setEntries([]);
+      setEditingSummary(null);
       setBuilderOpen(false);
       await loadSummaries();
     } finally {
@@ -107,72 +159,100 @@ export default function DailySummaryPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-sm">
-            <ClipboardList className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold">סיכום מסדר</h1>
-            <p className="text-xs text-muted-foreground">סיכומי מסדר יומיים</p>
-          </div>
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-sm">
+          <ClipboardList className="w-5 h-5" />
         </div>
-        <Button onClick={() => setBuilderOpen(true)} className="gap-2">
-          <Plus className="w-4 h-4" />
-          סיכום חדש
-        </Button>
+        <div>
+          <h1 className="text-lg font-bold">סיכום מסדר ושוטף</h1>
+          <p className="text-xs text-muted-foreground">סיכומי מסדר יומיים ושיבוץ המשימות השוטפות</p>
+        </div>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center py-20">
-          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-        </div>
-      ) : summaries.length === 0 ? (
-        <div className="text-center py-20 text-muted-foreground">
-          <p className="text-lg font-medium">אין סיכומי מסדר</p>
-          <p className="text-sm mt-1">לחץ "סיכום חדש" ליצירת סיכום.</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {summaries.map((s) => {
-            const parsed = parseEntries(s.entries);
-            return (
-              <div key={s.id} className="bg-white rounded-xl border border-border p-5">
-                <div className="flex items-center justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-muted-foreground" />
-                    <h2 className="text-base font-semibold">{formatHebrewDate(s.summary_date)}</h2>
-                  </div>
-                  <Button size="sm" variant="outline" onClick={() => handleCopy(s)} className="gap-1.5">
-                    <Copy className="w-3.5 h-3.5" />
-                    העתק
-                  </Button>
-                </div>
-                <div className="space-y-2">
-                  {parsed.map((e, i) => (
-                    <div key={i} className="flex gap-3 text-sm border-r-2 border-slate-200 pr-3">
-                      <div className="font-medium min-w-[140px] flex flex-wrap items-center gap-1.5">
-                        {e.pluga && (
-                          <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium", PLUGA_COLORS[e.pluga]?.light)}>
-                            {e.pluga}
-                          </span>
-                        )}
-                        <span>{entryAreas(e).join(", ")}</span>
+      <Tabs defaultValue="summary" dir="rtl">
+        <TabsList>
+          <TabsTrigger value="summary" className="gap-1.5">
+            <FileText className="w-3.5 h-3.5" />
+            סיכום מסדר
+          </TabsTrigger>
+          <TabsTrigger value="shotaf" className="gap-1.5">
+            <CalendarDays className="w-3.5 h-3.5" />
+            שוטף
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="summary" className="space-y-6 pt-4">
+          <div className="flex justify-end">
+            <Button onClick={openCreate} className="gap-2">
+              <Plus className="w-4 h-4" />
+              סיכום חדש
+            </Button>
+          </div>
+
+          {loading ? (
+            <div className="flex justify-center py-20">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : summaries.length === 0 ? (
+            <div className="text-center py-20 text-muted-foreground">
+              <p className="text-lg font-medium">אין סיכומי מסדר</p>
+              <p className="text-sm mt-1">לחץ "סיכום חדש" ליצירת סיכום.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {summaries.map((s) => {
+                const parsed = parseEntries(s.entries);
+                return (
+                  <div key={s.id} className="bg-white rounded-xl border border-border p-5">
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-muted-foreground" />
+                        <h2 className="text-base font-semibold">{formatHebrewDate(s.summary_date)}</h2>
                       </div>
-                      <div className="text-muted-foreground whitespace-pre-wrap">{e.notes}</div>
+                      <div className="flex items-center gap-1.5">
+                        <Button size="sm" variant="outline" onClick={() => openEdit(s)} className="gap-1.5">
+                          <Pencil className="w-3.5 h-3.5" />
+                          ערוך
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => handleCopy(s)} className="gap-1.5">
+                          <Copy className="w-3.5 h-3.5" />
+                          העתק
+                        </Button>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+                    <div className="space-y-2">
+                      {parsed.map((e, i) => (
+                        <div key={i} className="flex gap-3 text-sm border-r-2 border-slate-200 pr-3">
+                          <div className="font-medium min-w-[140px] flex flex-wrap items-center gap-1.5">
+                            {e.pluga && (
+                              <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium", PLUGA_COLORS[e.pluga]?.light)}>
+                                {e.pluga}
+                              </span>
+                            )}
+                            <span>{entryAreas(e).join(", ")}</span>
+                          </div>
+                          <div className="text-muted-foreground whitespace-pre-wrap">{e.notes}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="shotaf" className="pt-4">
+          <ShotafPanel editable={canEditShotaf} />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={builderOpen} onOpenChange={(o) => !o && setBuilderOpen(false)}>
         <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
-            <DialogTitle>סיכום מסדר - {formatHebrewDate(toDateStr(new Date()))}</DialogTitle>
+            <DialogTitle>
+              {editingSummary ? `עריכת סיכום מסדר - ${formatHebrewDate(editingSummary.summary_date)}` : `סיכום מסדר - ${formatHebrewDate(toDateStr(new Date()))}`}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-3 border rounded-lg p-4 bg-slate-50">
@@ -278,7 +358,7 @@ export default function DailySummaryPage() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => { setBuilderOpen(false); setEntries([]); }}
+              onClick={() => { setBuilderOpen(false); setEntries([]); setEditingSummary(null); }}
               disabled={saving}
             >
               ביטול

@@ -258,7 +258,10 @@ export default function Klaf() {
   // condition computed again, in full, further down once `user` is known.
   const earlyEffectiveRole = previewRole || user?.role;
   const earlyIsKlaf = earlyEffectiveRole === "קלפ";
-  const earlyDelegatedPermissions = effectivePermissions(myPermissions, user?.role);
+  // previewRole-aware — see the doc comment on effectivePermissions in
+  // src/lib/permissions.js (a true role preview should reflect a plain
+  // member of that role, not always the real signed-in admin's full access).
+  const earlyDelegatedPermissions = effectivePermissions(myPermissions, earlyEffectiveRole);
   const earlyIsDelegatedOnly = !earlyIsKlaf && plugotFor(earlyDelegatedPermissions, "meal_regulators").length > 0;
   usePageTitleOverride(earlyIsDelegatedOnly ? "מווסתים" : null, earlyIsDelegatedOnly ? UtensilsCrossed : null);
 
@@ -272,10 +275,9 @@ export default function Klaf() {
 
   const effectiveRole = previewRole || user.role;
   const isKlaf = effectiveRole === "קלפ";
-  // Admins hold every delegated permission automatically (see
-  // effectivePermissions) — use the REAL role here, never the previewed one,
-  // so previewing as another role never hands that role an admin's access.
-  const delegatedPermissions = effectivePermissions(myPermissions, user.role);
+  // previewRole-aware — see the doc comment on effectivePermissions in
+  // src/lib/permissions.js.
+  const delegatedPermissions = effectivePermissions(myPermissions, effectiveRole);
   // Every pluga this signed-in user is authorized to manage meal regulators
   // for (see src/lib/permissions.js / AdminPanel's "הרשאות מיוחדות") — for
   // most קלפ holders that's just their own pluga, but a delegated grant (or

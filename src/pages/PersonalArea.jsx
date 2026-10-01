@@ -2,9 +2,10 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Package, Truck, Bell, BellOff, BellRing, Info, ChevronLeft } from "lucide-react";
+import { Loader2, Bell, BellOff, BellRing, Info, ChevronLeft } from "lucide-react";
 import { usePreviewRole } from "@/lib/previewRoleContext";
-import { hasAnyPermission, effectivePermissions } from "@/lib/permissions";
+import { effectivePermissions } from "@/lib/permissions";
+import { getPersonalAreaLinks } from "@/lib/personalAreaLinks";
 import {
   isPushSupported,
   isIosNonStandalone,
@@ -81,14 +82,13 @@ export default function PersonalArea() {
   }
 
   const effectiveRole = previewRole || user.role;
-  // Admins hold every delegated permission automatically — use the REAL
-  // role here, never the previewed one (see effectivePermissions).
-  const delegatedPermissions = effectivePermissions(myPermissions, user.role);
-  // Same visibility rule /equipment had as a top-nav item before it moved
-  // here — admin/קלפ only (AppLayout's ROLE_PAGES allowlist still enforces
-  // this at the route level regardless).
-  const showEquipment = effectiveRole === "admin" || effectiveRole === "קלפ";
-  const showPlaybox = hasAnyPermission(delegatedPermissions, ["playbox_orders"]);
+  // During a role preview this intentionally passes the previewed role, not
+  // the real (admin) one, so an admin previewing e.g. "תצוגת רסר" sees
+  // exactly the links a plain רסר would — not every permission-gated link,
+  // just because the real signed-in user happens to be an admin (see the
+  // doc comment on effectivePermissions in src/lib/permissions.js).
+  const delegatedPermissions = effectivePermissions(myPermissions, effectiveRole);
+  const links = getPersonalAreaLinks({ effectiveRole, delegatedPermissions });
 
   const notifPermission = getPermission();
   const iosBlocked = isIosNonStandalone();
@@ -101,41 +101,25 @@ export default function PersonalArea() {
       </div>
 
       <div className="space-y-3">
-        {showEquipment && (
+        {links.map(({ to, label, description, icon: Icon }) => (
           <Link
-            to="/equipment"
+            key={to}
+            to={to}
             className="flex items-center justify-between gap-3 rounded-xl border-2 border-border bg-white p-4 hover:border-slate-400 transition-colors"
           >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-slate-900 text-white flex items-center justify-center shrink-0">
-                <Package className="w-5 h-5" />
+                <Icon className="w-5 h-5" />
               </div>
               <div>
-                <p className="font-medium text-sm">משיכות ציוד</p>
-                <p className="text-xs text-muted-foreground">מעקב אחר ציוד ובקשות משיכה</p>
+                <p className="font-medium text-sm">{label}</p>
+                <p className="text-xs text-muted-foreground">{description}</p>
               </div>
             </div>
             <ChevronLeft className="w-4 h-4 text-muted-foreground" />
           </Link>
-        )}
-        {showPlaybox && (
-          <Link
-            to="/playbox"
-            className="flex items-center justify-between gap-3 rounded-xl border-2 border-border bg-white p-4 hover:border-slate-400 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-slate-900 text-white flex items-center justify-center shrink-0">
-                <Truck className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="font-medium text-sm">פלייבוקס</p>
-                <p className="text-xs text-muted-foreground">ריכוז הזמנות לשבוע הקרוב</p>
-              </div>
-            </div>
-            <ChevronLeft className="w-4 h-4 text-muted-foreground" />
-          </Link>
-        )}
-        {!showEquipment && !showPlaybox && (
+        ))}
+        {links.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-4">אין קישורים נוספים זמינים עבורך כרגע</p>
         )}
       </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Trash2, Copy, FileText } from "lucide-react";
+import { Loader2, Plus, Trash2, Copy, FileText, Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,6 +32,13 @@ export default function KlafSummary({ dateStr }) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [builderOpen, setBuilderOpen] = useState(false);
+  // Whether the open builder dialog is editing the existing summary
+  // (pre-filled from it, saved via update()) or starting a fresh one (saved
+  // via create()) — feature request: "לאפשר לעדכן סיכומי מסדר כדי שקלפים
+  // יוכלו לעדכן את הסיכום מסדר". Previously this dialog could only ever
+  // create a brand-new summary; once one existed for the day there was no
+  // way back into it short of editing the raw data.
+  const [editing, setEditing] = useState(false);
   const [entries, setEntries] = useState([]);
   const [newAreas, setNewAreas] = useState([]);
   const [newPluga, setNewPluga] = useState("");
@@ -83,14 +90,31 @@ export default function KlafSummary({ dateStr }) {
     setNewNotes("");
   };
 
+  const openCreate = () => {
+    setEditing(false);
+    setEntries([]);
+    setBuilderOpen(true);
+  };
+
+  const openEdit = () => {
+    if (!summary) return;
+    setEditing(true);
+    setEntries(parseEntries(summary.entries));
+    setBuilderOpen(true);
+  };
+
   const handleFinish = async () => {
     if (entries.length === 0) return;
     setSaving(true);
     try {
-      await base44.entities.DailySummary.create({
-        summary_date: dateStr,
-        entries,
-      });
+      if (editing && summary) {
+        await base44.entities.DailySummary.update(summary.id, { entries });
+      } else {
+        await base44.entities.DailySummary.create({
+          summary_date: dateStr,
+          entries,
+        });
+      }
       setEntries([]);
       setBuilderOpen(false);
       await loadSummary();
@@ -109,10 +133,16 @@ export default function KlafSummary({ dateStr }) {
           <h2 className="text-sm font-semibold">סיכום מסדר</h2>
         </div>
         {summary && (
-          <Button size="sm" variant="outline" onClick={handleCopy} className="gap-1">
-            <Copy className="w-3.5 h-3.5" />
-            העתק
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" variant="outline" onClick={openEdit} className="gap-1">
+              <Pencil className="w-3.5 h-3.5" />
+              ערוך
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleCopy} className="gap-1">
+              <Copy className="w-3.5 h-3.5" />
+              העתק
+            </Button>
+          </div>
         )}
       </div>
 
@@ -139,7 +169,7 @@ export default function KlafSummary({ dateStr }) {
       ) : (
         <div className="text-center py-4">
           <p className="text-sm text-muted-foreground mb-2">אין סיכום לתאריך זה</p>
-          <Button size="sm" variant="outline" onClick={() => setBuilderOpen(true)} className="gap-1">
+          <Button size="sm" variant="outline" onClick={openCreate} className="gap-1">
             <Plus className="w-3.5 h-3.5" />
             צור סיכום
           </Button>
