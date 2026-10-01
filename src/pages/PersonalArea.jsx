@@ -133,19 +133,34 @@ export default function PersonalArea() {
           כשמופעל, תקבלו התראה ישירות לטלפון/למחשב כשיש הודעה חדשה מהמנהלים, וכל בוקר ב-7:00 תזכורת על המשימות שלכם להיום.
         </p>
 
-        {!isPushSupported() && (
-          <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
-            <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-            <span>הדפדפן הזה לא תומך בהתראות Push.</span>
-          </div>
-        )}
-
-        {isPushSupported() && iosBlocked && (
+        {/*
+          iosBlocked is checked BEFORE isPushSupported() — and on its own,
+          not gated behind it. On a real iPhone/iPad, opening the site as a
+          plain Safari tab (not from a home-screen icon) means the Push API
+          is simply absent from the page (no window.PushManager at all, by
+          Apple's own design — Web Push only exists for an installed
+          home-screen web app), so isPushSupported() is FALSE in exactly
+          this, the most common, case. The old order checked
+          `isPushSupported() && iosBlocked` for this message, so it could
+          never actually show there — every iPhone/iPad visitor in a normal
+          tab fell through to the generic "this browser doesn't support
+          push" message below instead, which reads as a dead end instead of
+          "here's what to do." (Feature request: "יש מצב שאי אפשר להפעיל את
+          ההתראות באייפונים?" — this was it.)
+        */}
+        {iosBlocked && (
           <div className="flex items-start gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-2.5">
             <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
             <span>
               ב-iPhone/iPad יש קודם להוסיף את האתר למסך הבית (כפתור השיתוף ⇦ "הוסף למסך הבית"), ולפתוח אותו מהאייקון שנוסף שם — רק אז ניתן להפעיל התראות (מגבלה של אפל, לא ניתנת לעקיפה).
             </span>
+          </div>
+        )}
+
+        {!iosBlocked && !isPushSupported() && (
+          <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+            <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>הדפדפן הזה לא תומך בהתראות Push.</span>
           </div>
         )}
 
