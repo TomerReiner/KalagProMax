@@ -154,7 +154,7 @@ export default function TopNav() {
               {personalLinks.length > 0 && <DropdownMenuSeparator />}
               <DropdownMenuItem onSelect={() => navigate("/personal")} className="gap-2 cursor-pointer">
                 <PERSONAL_AREA_ITEM.icon className="w-4 h-4 text-slate-500" />
-                אזור אישי מלא והתראות
+                אזור אישי מלא
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
