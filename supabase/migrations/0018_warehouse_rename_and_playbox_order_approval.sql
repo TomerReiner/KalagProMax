@@ -19,9 +19,16 @@
 update public.warehouse_items set warehouse = 'מחסן קליר' where warehouse = 'מחסן לוגיסטי';
 update public.withdrawal_requests set warehouse = 'מחסן קליר' where warehouse = 'מחסן לוגיסטי';
 update public.equipment_holdings set warehouse = 'מחסן קליר' where warehouse = 'מחסן לוגיסטי';
+
+-- Drop the old check constraint BEFORE renaming the value in playbox_orders:
+-- the old constraint only allows 'מחסן לוגיסטי', so updating rows to the new
+-- name 'מחסן קליר' while that constraint is still in force fails with
+-- "violates check constraint playbox_orders_destination_warehouse_check"
+-- (this bit production on the first attempt — fixed here).
+alter table public.playbox_orders drop constraint if exists playbox_orders_destination_warehouse_check;
+
 update public.playbox_orders set destination_warehouse = 'מחסן קליר' where destination_warehouse = 'מחסן לוגיסטי';
 
-alter table public.playbox_orders drop constraint if exists playbox_orders_destination_warehouse_check;
 alter table public.playbox_orders add constraint playbox_orders_destination_warehouse_check
   check (destination_warehouse is null or destination_warehouse in ('מכולה', 'מחסן קרביץ', 'מחסן קליר'));
 
