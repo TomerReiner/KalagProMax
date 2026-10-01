@@ -538,8 +538,8 @@ export default function Equipment() {
       <WithdrawalForm
         open={withdrawalOpen}
         onClose={() => setWithdrawalOpen(false)}
-        warehouse={activeWarehouse}
-        items={warehouseItems}
+        allItems={items}
+        defaultWarehouse={activeWarehouse}
         userPluga={effectivePluga}
         onDone={loadData}
       />

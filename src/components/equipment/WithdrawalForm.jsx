@@ -8,11 +8,28 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PLUGOT, PLUGA_COLORS, toDateStr } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { base44 } from "@/api/base44Client";
-import { Loader2, Copy } from "lucide-react";
+import { Loader2, Copy, Search, X } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
-export default function WithdrawalForm({ open, onClose, warehouse, items, userPluga, onDone }) {
+// `allItems` is every item from every warehouse (Equipment.jsx's own
+// unfiltered list) so this dialog's own search box (feature request: "במשיכת
+// ציוד, בוא נעשה שאפשר לעשות חיפוש על כל המוצרים מכל המחסנים") can search
+// across all of them — a cross-warehouse search was added to Equipment.jsx's
+// own item list earlier, but the actual "משיכת ציוד" dialog (this file,
+// where a withdrawal is actually created) never got one, which was the real
+// ask. `defaultWarehouse` is just where the list starts (whatever tab was
+// active on the Equipment page); see requestWarehouse below for how it can
+// change once you actually pick an item.
+export default function WithdrawalForm({ open, onClose, allItems, defaultWarehouse, userPluga, onDone }) {
   const { toast } = useToast();
+  // A single withdrawal request still only pulls from one warehouse — the
+  // approval step (api/approve-withdrawal.js) looks up stock for the whole
+  // request by one `warehouse` value — so this tracks which warehouse the
+  // CURRENT selection is pinned to. It starts at defaultWarehouse and can
+  // switch once you pick an item from a different warehouse while searching;
+  // see toggleItem below.
+  const [requestWarehouse, setRequestWarehouse] = useState(defaultWarehouse);
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState({});
   const [pluga, setPluga] = useState(userPluga || "");
   const [expectedReturnDate, setExpectedReturnDate] = useState("");
@@ -31,6 +48,8 @@ export default function WithdrawalForm({ open, onClose, warehouse, items, userPl
 
   useEffect(() => {
     if (open) {
+      setRequestWarehouse(defaultWarehouse);
+      setSearch("");
       setSelected({});
       setPluga(userPluga || "");
       setExpectedReturnDate("");
@@ -40,13 +59,43 @@ export default function WithdrawalForm({ open, onClose, warehouse, items, userPl
       setIncludeAutoOrder(true);
       setShareText(null);
     }
-  }, [open, userPluga]);
+  }, [open, defaultWarehouse, userPluga]);
 
-  const toggleItem = (id) => {
+  const normalizedSearch = search.trim().toLowerCase();
+  const isSearching = normalizedSearch.length > 0;
+  // While searching, list matches from every warehouse at once (with a
+  // warehouse badge per row below). Otherwise, only the warehouse this
+  // request is currently pinned to — same as before.
+  const items = isSearching
+    ? allItems.filter((i) => i.name.toLowerCase().includes(normalizedSearch))
+    : allItems.filter((i) => i.warehouse === requestWarehouse);
+
+  const toggleItem = (item) => {
     setSelected((prev) => {
       const next = { ...prev };
-      if (next[id]) delete next[id];
-      else next[id] = 1;
+      if (next[item.id]) {
+        delete next[item.id];
+        return next;
+      }
+      const selectedWarehouses = new Set(
+        Object.keys(prev)
+          .map((id) => allItems.find((i) => i.id === id)?.warehouse)
+          .filter(Boolean)
+      );
+      if (selectedWarehouses.size > 0 && !selectedWarehouses.has(item.warehouse)) {
+        // Picking an item from a different warehouse than what's already
+        // selected starts a fresh selection in THAT warehouse instead of
+        // silently mixing stock from two warehouses into one request.
+        toast({
+          title: "אפשר למשוך מתוך מחסן אחד בבקשה אחת",
+          description: `הבחירה הקודמת אופסה — ממשיכים עם "${item.warehouse}"`,
+          duration: 3000,
+        });
+        setRequestWarehouse(item.warehouse);
+        return { [item.id]: 1 };
+      }
+      if (selectedWarehouses.size === 0) setRequestWarehouse(item.warehouse);
+      next[item.id] = 1;
       return next;
     });
   };
@@ -56,7 +105,7 @@ export default function WithdrawalForm({ open, onClose, warehouse, items, userPl
   };
 
   const selectedItems = Object.entries(selected).map(([id, qty]) => {
-    const item = items.find((i) => i.id === id);
+    const item = allItems.find((i) => i.id === id);
     return { id, name: item?.name, quantity: qty, returnable: item?.returnable };
   });
 
@@ -67,7 +116,7 @@ export default function WithdrawalForm({ open, onClose, warehouse, items, userPl
   const computeShortages = () =>
     selectedItems
       .map((si) => {
-        const item = items.find((i) => i.id === si.id);
+        const item = allItems.find((i) => i.id === si.id);
         const target = Number(item?.target_quantity) || 0;
         if (!item || target <= 0) return null;
         const remaining = Number(item.quantity) - Number(si.quantity);
@@ -124,7 +173,7 @@ export default function WithdrawalForm({ open, onClose, warehouse, items, userPl
     try {
       const createdText = shortageList.length > 0 ? await createAutoOrders(shortageList, pluga) : null;
       await base44.functions.invoke("processWithdrawal", {
-        warehouse,
+        warehouse: requestWarehouse,
         items: selectedItems.map((i) => ({ name: i.name, quantity: i.quantity, returnable: i.returnable })),
         pluga,
         expected_return_date: expectedReturnDate || undefined,
@@ -248,7 +297,7 @@ export default function WithdrawalForm({ open, onClose, warehouse, items, userPl
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle>משיכת ציוד - {warehouse}</DialogTitle>
+              <DialogTitle>משיכת ציוד{isSearching ? "" : ` - ${requestWarehouse}`}</DialogTitle>
             </DialogHeader>
             {error && (
               <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">{error}</div>
@@ -256,20 +305,48 @@ export default function WithdrawalForm({ open, onClose, warehouse, items, userPl
             <div className="space-y-4">
               <div>
                 <Label className="mb-2 block">פריטים זמינים</Label>
+                <div className="relative mb-2">
+                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                  <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="חיפוש פריט בכל המחסנים..."
+                    className="pr-9 pl-9"
+                  />
+                  {isSearching && (
+                    <button
+                      type="button"
+                      onClick={() => setSearch("")}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      title="נקה חיפוש"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
                 <div className="space-y-2 max-h-[280px] overflow-y-auto">
                   {items.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">אין פריטים במחסן זה</p>
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      {isSearching ? "לא נמצאו פריטים תואמים" : "אין פריטים במחסן זה"}
+                    </p>
                   ) : (
                     items.map((item) => (
                       <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg border bg-white">
                         <input
                           type="checkbox"
                           checked={!!selected[item.id]}
-                          onChange={() => toggleItem(item.id)}
+                          onChange={() => toggleItem(item)}
                           className="w-4 h-4"
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{item.name}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-sm font-medium truncate">{item.name}</p>
+                            {isSearching && (
+                              <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 shrink-0">
+                                {item.warehouse}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-muted-foreground">
                             זמין: {item.quantity}
                             {item.returnable ? " · להחזרה" : ""}

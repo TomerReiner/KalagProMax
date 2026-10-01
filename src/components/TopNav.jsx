@@ -51,12 +51,18 @@ const ROLE_ORDER = {
 // route currently open" state looks exactly like every other tab's active
 // state (inspired by a reference screenshot of another in-house tool's
 // toolbar: a rounded pill highlight on the active tab rather than the
-// previous bottom-border underline).
+// previous bottom-border underline). Stacked icon-over-label layout — same
+// screenshot also shows a small text label under each icon, not icon-only;
+// the label uses NAV_LABEL_CLASS below and truncates instead of wrapping so
+// a long label (e.g. "סיכום מסדר ושוטף") can't bring back the overflow bug
+// the icon-only bar was originally built to fix.
 const TAB_CLASS = (isActive) =>
   cn(
-    "relative flex-1 min-w-0 flex items-center justify-center gap-0.5 px-1 py-2.5 sm:px-4 sm:py-3 m-1 rounded-lg transition-colors",
+    "relative flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 px-1 py-2 sm:px-2 sm:py-2.5 m-1 rounded-lg transition-colors",
     isActive ? "bg-white/15 text-white" : "text-slate-300 hover:text-white hover:bg-white/5"
   );
+
+const NAV_LABEL_CLASS = "text-[9px] sm:text-[10px] leading-tight max-w-full truncate";
 
 export default function TopNav() {
   const [user, setUser] = useState(null);
@@ -108,6 +114,7 @@ export default function TopNav() {
             className={({ isActive }) => TAB_CLASS(isActive)}
           >
             <Icon className="w-[18px] h-[18px] sm:w-5 sm:h-5" />
+            <span className={NAV_LABEL_CLASS}>{label}</span>
             {to === "/klaf" && openCount > 0 && (
               <span
                 className="absolute top-1 left-1 min-w-[16px] h-[16px] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center"
@@ -128,10 +135,13 @@ export default function TopNav() {
                 className={TAB_CLASS(isPersonalAreaActive)}
               >
                 <PERSONAL_AREA_ITEM.icon className="w-[18px] h-[18px] sm:w-5 sm:h-5" />
-                {/* Signals this icon opens a menu instead of navigating
-                    straight there — same cue the reference screenshot's own
-                    "האזור שלי" item uses. */}
-                <ChevronDown className="w-3 h-3 opacity-70" />
+                <span className={cn(NAV_LABEL_CLASS, "flex items-center gap-0.5")}>
+                  {PERSONAL_AREA_ITEM.label}
+                  {/* Signals this icon opens a menu instead of navigating
+                      straight there — same cue the reference screenshot's own
+                      "האזור שלי" item uses. */}
+                  <ChevronDown className="w-3 h-3 opacity-70 shrink-0" />
+                </span>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56" dir="rtl">
