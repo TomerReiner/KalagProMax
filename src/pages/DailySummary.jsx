@@ -164,7 +164,7 @@ export default function DailySummaryPage() {
           <ClipboardList className="w-5 h-5" />
         </div>
         <div>
-          <h1 className="text-lg font-bold">סיכום מסדר ושוטף</h1>
+          <h1 className="text-lg font-bold">שוטף</h1>
           <p className="text-xs text-muted-foreground">סיכומי מסדר יומיים ושיבוץ המשימות השוטפות</p>
         </div>
       </div>

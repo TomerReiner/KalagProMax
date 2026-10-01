@@ -22,7 +22,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 // "/daily-summary" as a second tab (see src/pages/DailySummary.jsx).
 const ALL_NAV_ITEMS = [
   { to: "/", label: "פערים", icon: HardHat, roles: ["admin", "קלפ", "רסר", "סגל"] },
-  { to: "/daily-summary", label: "סיכום מסדר ושוטף", icon: ClipboardList, roles: ["admin", "קלפ", "רסר", "סגל"] },
+  { to: "/daily-summary", label: "שוטף", icon: ClipboardList, roles: ["admin", "קלפ", "רסר", "סגל"] },
   { to: "/constraints", label: "אילוצים", icon: CalendarRange, roles: ["admin", "קלפ", "רסר", "סגל"] },
   { to: "/tasks", label: "משימות", icon: ClipboardCheck, roles: ["admin"] },
   { to: "/statistics", label: "סטטיסטיקה", icon: BarChart3, roles: ["admin", "רסר", "סגל"] },
@@ -54,7 +54,7 @@ const ROLE_ORDER = {
 // previous bottom-border underline). Stacked icon-over-label layout — same
 // screenshot also shows a small text label under each icon, not icon-only;
 // the label uses NAV_LABEL_CLASS below and truncates instead of wrapping so
-// a long label (e.g. "סיכום מסדר ושוטף") can't bring back the overflow bug
+// a long label can't bring back the overflow bug
 // the icon-only bar was originally built to fix.
 const TAB_CLASS = (isActive) =>
   cn(

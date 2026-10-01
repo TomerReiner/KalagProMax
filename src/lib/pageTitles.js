@@ -11,7 +11,7 @@ import { HardHat, CalendarRange, ClipboardList, ClipboardCheck, CheckSquare, Bar
 
 export const PAGE_TITLES = {
   "/": { label: "פערים", icon: HardHat },
-  "/daily-summary": { label: "סיכום מסדר ושוטף", icon: ClipboardList },
+  "/daily-summary": { label: "שוטף", icon: ClipboardList },
   "/constraints": { label: "אילוצים", icon: CalendarRange },
   "/tasks": { label: "משימות", icon: ClipboardCheck },
   "/statistics": { label: "סטטיסטיקה", icon: BarChart3 },

@@ -22,7 +22,7 @@ const HEADER_IMAGE_URL = "https://media.base44.com/images/public/6aa1c4c872f2848
 // קלפ already has it by role, and a non-קלפ delegated holder now reaches the
 // same isDelegatedOnly view through "אזור אישי" instead of a top-nav icon,
 // see src/pages/PersonalArea.jsx / src/components/TopNav.jsx).
-// "/daily-summary" (now "סיכום מסדר ושוטף" — see src/pages/DailySummary.jsx)
+// "/daily-summary" (tab label "שוטף" — see src/pages/DailySummary.jsx)
 // is reachable by every role: the שוטף half is still edit-gated by the
 // shotaf_schedule permission, but anyone can view it and everyone can edit
 // the סיכום מסדר half, so there's no reason to hide the tab itself. "/shotaf"
