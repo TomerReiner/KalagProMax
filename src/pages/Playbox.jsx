@@ -161,12 +161,17 @@ function PlayboxOrders({ user }) {
   }, [load]);
 
   const handleAdd = async () => {
-    if (!form.item.trim()) return;
+    // name is required (feature request: "שהשדה של הגדרת שם להזמנה יהיה
+    // חובה") — this only applies to orders a person types in here; it's
+    // enforced at this form's level, not as a DB constraint, since
+    // auto-generated completion orders (Equipment.jsx / WithdrawalForm.jsx's
+    // createAutoOrders) never set a name at all and shouldn't start failing.
+    if (!form.item.trim() || !form.name.trim()) return;
     setSaving(true);
     try {
       await base44.entities.PlayboxOrder.create({
         order_date: form.order_date,
-        name: form.name.trim() || null,
+        name: form.name.trim(),
         item: form.item.trim(),
         quantity: Number(form.quantity) || 1,
         notes: form.notes.trim() || null,
@@ -199,11 +204,14 @@ function PlayboxOrders({ user }) {
   // request, any change to the order needs a fresh approval, since whatever
   // was approved before might not match the new content anymore.
   const handleSaveEdit = async () => {
-    if (!editingOrder || !editingOrder.item.trim()) return;
+    // Same required-name rule as handleAdd above — editing an older order
+    // that has no name (pre-dating this change, or auto-generated) now needs
+    // one filled in before it can be saved.
+    if (!editingOrder || !editingOrder.item.trim() || !editingOrder.name.trim()) return;
     setSaving(true);
     try {
       await base44.entities.PlayboxOrder.update(editingOrder.id, {
-        name: editingOrder.name.trim() || null,
+        name: editingOrder.name.trim(),
         order_date: editingOrder.order_date,
         item: editingOrder.item.trim(),
         quantity: Number(editingOrder.quantity) || 1,
@@ -332,14 +340,14 @@ function PlayboxOrders({ user }) {
     <div className="space-y-4 pt-2">
       <div className="border rounded-lg p-3 bg-white space-y-2">
         <p className="text-sm font-medium">הוספת בקשת הזמנה</p>
-        <Input placeholder="שם ההזמנה (אופציונלי)" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="h-9 text-sm" />
+        <Input placeholder="שם ההזמנה *" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="h-9 text-sm" />
         <Input type="date" value={form.order_date} onChange={(e) => setForm((f) => ({ ...f, order_date: e.target.value }))} className="h-9 text-sm" />
         <Input placeholder="פריט" value={form.item} onChange={(e) => setForm((f) => ({ ...f, item: e.target.value }))} className="h-9 text-sm" />
         <div className="grid grid-cols-[100px_1fr] gap-2">
           <Input type="number" min="1" value={form.quantity} onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))} className="h-9 text-sm" />
           <Input placeholder="הערות (אופציונלי)" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} className="h-9 text-sm" />
         </div>
-        <Button size="sm" onClick={handleAdd} disabled={saving || !form.item.trim()} className="w-full gap-1.5">
+        <Button size="sm" onClick={handleAdd} disabled={saving || !form.item.trim() || !form.name.trim()} className="w-full gap-1.5">
           <Plus className="w-3.5 h-3.5" />
           הוסף
         </Button>
@@ -454,7 +462,7 @@ function PlayboxOrders({ user }) {
                 שמירת שינויים תבטל אישור קודם — ההזמנה תצטרך אישור מחדש.
               </p>
               <div className="space-y-1.5">
-                <Label>שם ההזמנה (אופציונלי)</Label>
+                <Label>שם ההזמנה *</Label>
                 <Input value={editingOrder.name} onChange={(e) => setEditingOrder((o) => ({ ...o, name: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
@@ -477,7 +485,7 @@ function PlayboxOrders({ user }) {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingOrder(null)} disabled={saving}>ביטול</Button>
-            <Button onClick={handleSaveEdit} disabled={saving || !editingOrder?.item?.trim()}>
+            <Button onClick={handleSaveEdit} disabled={saving || !editingOrder?.item?.trim() || !editingOrder?.name?.trim()}>
               {saving ? "שומר..." : "שמור"}
             </Button>
           </DialogFooter>
