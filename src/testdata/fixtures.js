@@ -325,17 +325,17 @@ export function buildFixtures() {
   // any one pluga's own supply either. See the comment on Playbox() in
   // src/pages/Playbox.jsx.)
   const playbox_orders = [
-    { id: "81000000-0000-4000-8000-000000000001", pluga: null, order_date: dateStr(D1), item: "חטיפים", quantity: 10, notes: null, status: "ממתין", auto_generated: false, destination_warehouse: null, ...stamp },
-    { id: "81000000-0000-4000-8000-000000000002", pluga: null, order_date: dateStr(D2), item: "שתייה קלה", quantity: 24, notes: "לאירוע יום שלישי", status: "הוזמן", auto_generated: false, destination_warehouse: null, ...stamp },
-    { id: "81000000-0000-4000-8000-000000000003", pluga: null, order_date: dateStr(D0), item: "עוגות", quantity: 3, notes: null, status: "בוטל", auto_generated: false, destination_warehouse: null, ...stamp },
+    { id: "81000000-0000-4000-8000-000000000001", pluga: null, name: "הזמנה שבועית", order_date: dateStr(D1), items: [{ name: "חטיפים", quantity: 10, note: "קרטונים" }, { name: "כבל חשמל", quantity: 25, note: "מטר" }], notes: null, status: "ממתין", approved: false, auto_generated: false, destination_warehouse: null, ...stamp },
+    { id: "81000000-0000-4000-8000-000000000002", pluga: null, name: "אירוע יום שלישי", order_date: dateStr(D2), items: [{ name: "שתייה קלה", quantity: 24, note: "בקבוקים 1.5 ל'" }, { name: "כוסות חד\"פ", quantity: 200, note: "יחידות" }], notes: "לאירוע יום שלישי", status: "הוזמן", approved: true, approved_by_name: "מנהל בדיקה", auto_generated: false, destination_warehouse: null, ...stamp },
+    { id: "81000000-0000-4000-8000-000000000003", pluga: null, name: "עוגות", order_date: dateStr(D0), items: [{ name: "עוגות", quantity: 3, note: null }], notes: null, status: "בוטל", approved: false, auto_generated: false, destination_warehouse: null, ...stamp },
     // חוסר במחסן שכבר קיבל הזמנה אוטומטית ממתינה — מדגים את מניעת הכפילות
     // ב-Equipment.jsx's "צור הזמנות בפלייבוקס לכל החוסרים": "שולחנות
     // מתקפלים" (ר' warehouse_items למעלה: 15 מתוך 20 יעד) כבר מכוסה על ידי
     // ההזמנה הזו, כך שהכפתור ידלג עליו; "אוהלים" (6 מתוך 10) נשאר בלי הזמנה
     // ממתינה, כך שהכפתור כן יפעל עליו.
-    { id: "81000000-0000-4000-8000-000000000004", pluga: null, order_date: dateStr(D0), item: "שולחנות מתקפלים", quantity: 5, notes: "נוצר אוטומטית ממעקב חוסרי מחסן", status: "ממתין", auto_generated: true, destination_warehouse: null, ...stamp },
+    { id: "81000000-0000-4000-8000-000000000004", pluga: null, name: "השלמת מלאי", order_date: dateStr(D0), items: [{ name: "שולחנות מתקפלים", quantity: 5, note: null }], notes: "נוצר אוטומטית ממעקב חוסרי מחסן", status: "ממתין", approved: false, auto_generated: true, destination_warehouse: null, ...stamp },
     // הזמנה שכבר התקבלה ונכנסה למחסן בפועל — מדגים את destination_warehouse.
-    { id: "81000000-0000-4000-8000-000000000005", pluga: null, order_date: dateStr(D2), item: "שקיות זבל", quantity: 20, notes: null, status: "התקבל", auto_generated: false, destination_warehouse: "מחסן קרביץ", ...stamp },
+    { id: "81000000-0000-4000-8000-000000000005", pluga: null, name: "ניקיון", order_date: dateStr(D2), items: [{ name: "שקיות זבל", quantity: 20, note: "גלילים" }], notes: null, status: "התקבל", approved: true, approved_by_name: "מנהל בדיקה", auto_generated: false, destination_warehouse: "מחסן קרביץ", ...stamp },
   ];
 
   const meal_regulators = [

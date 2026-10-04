@@ -6,7 +6,7 @@ import AdminPanel from "./AdminPanel";
 import NotificationsBell from "./NotificationsBell";
 import PushAutoSubscribe from "./PushAutoSubscribe";
 import { usePreviewRole } from "@/lib/previewRoleContext";
-import { hasPermission, plugotFor, effectivePermissions } from "@/lib/permissions";
+import { plugotFor, effectivePermissions } from "@/lib/permissions";
 import { PAGE_TITLES } from "@/lib/pageTitles";
 import { PageTitleProvider, usePageTitleValue } from "@/lib/pageTitleContext";
 
@@ -17,8 +17,8 @@ const HEADER_IMAGE_URL = "https://media.base44.com/images/public/6aa1c4c872f2848
 
 // Role-based page allowlist. Delegated permissions (src/lib/permissions.js)
 // can widen this for a specific signed-in user regardless of role — see the
-// extraAllowedPages logic below, which adds "/playbox" for a playbox_orders
-// grant (קלפ's own meal_regulators grant no longer adds "/klaf" here — every
+// logic below, which adds "/klaf" for a non-קלפ meal_regulators holder
+// (קלפ's own meal_regulators grant doesn't need to — every
 // קלפ already has it by role, and a non-קלפ delegated holder now reaches the
 // same isDelegatedOnly view through "אזור אישי" instead of a top-nav icon,
 // see src/pages/PersonalArea.jsx / src/components/TopNav.jsx).
@@ -32,14 +32,15 @@ const HEADER_IMAGE_URL = "https://media.base44.com/images/public/6aa1c4c872f2848
 // "/personal" (אזור אישי) is reachable by every role — it's the new home for
 // the equipment/playbox/מווסתים links that used to be their own top-nav
 // items (see TopNav.jsx / src/pages/PersonalArea.jsx), plus push-notification
-// opt-in for everyone. "/equipment" and "/playbox" themselves stay in this
-// allowlist for the roles that could already reach them, since PersonalArea
-// links straight into those pages rather than duplicating them.
+// opt-in for everyone. "/equipment" stays in this allowlist for the roles
+// that could already reach it, since PersonalArea links straight into it.
+// "/playbox" is open to every role: anyone can create/edit an order, and
+// only approval/status changes are gated (see src/pages/Playbox.jsx).
 const ROLE_PAGES = {
-  admin: ["/", "/daily-summary", "/constraints", "/tasks", "/statistics", "/equipment", "/personal"],
-  קלפ: ["/", "/daily-summary", "/constraints", "/klaf", "/equipment", "/personal"],
-  רסר: ["/", "/daily-summary", "/constraints", "/statistics", "/personal"],
-  סגל: ["/", "/daily-summary", "/constraints", "/statistics", "/personal"],
+  admin: ["/", "/daily-summary", "/constraints", "/tasks", "/statistics", "/equipment", "/playbox", "/personal"],
+  קלפ: ["/", "/daily-summary", "/constraints", "/klaf", "/equipment", "/playbox", "/personal"],
+  רסר: ["/", "/daily-summary", "/constraints", "/statistics", "/playbox", "/personal"],
+  סגל: ["/", "/daily-summary", "/constraints", "/statistics", "/playbox", "/personal"],
 };
 
 const ROLE_DEFAULT_PAGE = {
@@ -90,14 +91,13 @@ function AppLayoutInner() {
     const effectiveRole = previewRole || user.role;
     const allowed = [...(ROLE_PAGES[effectiveRole] || [])];
     // Previewing as another role should widen route access exactly the way
-    // that role actually would (e.g. a סגל previewer should see /playbox
-    // open by default, a רסר previewer should NOT unless that role would) —
+    // that role actually would (e.g. a רסר previewer should only reach
+    // /klaf if that role's own grants would allow it) —
     // so this passes effectiveRole (previewRole when previewing, else the
     // real role), not always the real role. See the long comment on
     // effectivePermissions in src/lib/permissions.js for why this used to be
     // "user.role" unconditionally and why that was wrong for a true preview.
     const delegatedPermissions = effectivePermissions(myPermissions, effectiveRole);
-    if (hasPermission(delegatedPermissions, "playbox_orders")) allowed.push("/playbox");
     if (plugotFor(delegatedPermissions, "meal_regulators").length > 0 && !allowed.includes("/klaf")) allowed.push("/klaf");
 
     // Land on this role's real default tab once, right after login — "/" is

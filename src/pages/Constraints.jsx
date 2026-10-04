@@ -14,6 +14,8 @@ import RecurringManageDialog from "@/components/constraints/RecurringManageDialo
 import EventConfirmationsOverview from "@/components/constraints/EventConfirmationsOverview";
 import { cn } from "@/lib/utils";
 import { computeLayout } from "@/lib/calendarLayout";
+import { usePreviewRole } from "@/lib/previewRoleContext";
+import { hasPermission, effectivePermissions } from "@/lib/permissions";
 
 const DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 const HOUR_START = 6;
@@ -64,6 +66,23 @@ export default function Constraints() {
   const [moveDate, setMoveDate] = useState("");
   const [viewShotafTask, setViewShotafTask] = useState(null);
   const [shotafPluga, setShotafPluga] = useState("");
+
+  // The שוטף quick-edit below (click a dotted שוטף block) follows the same
+  // rule as the שוטף tab itself (src/components/dailysummary/ShotafPanel.jsx):
+  // anyone can see who's assigned, only an admin or a shotaf_schedule holder
+  // can change it. The database enforces the same rule (migration 0019).
+  const [user, setUser] = useState(null);
+  const [myPermissions, setMyPermissions] = useState([]);
+  const { previewRole } = usePreviewRole();
+  useEffect(() => {
+    base44.auth.me().then(setUser).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (!user?.id) { setMyPermissions([]); return; }
+    base44.entities.UserPermission.filter({ user_id: user.id }).then(setMyPermissions).catch(() => setMyPermissions([]));
+  }, [user?.id]);
+  const effectiveRole = previewRole || user?.role;
+  const canEditShotaf = effectiveRole === "admin" || hasPermission(effectivePermissions(myPermissions, effectiveRole), "shotaf_schedule");
 
   const [form, setForm] = useState({
     plugas: [],
@@ -305,7 +324,7 @@ export default function Constraints() {
   };
 
   const handleShotafPlugaChange = async () => {
-    if (!viewShotafTask) return;
+    if (!viewShotafTask || !canEditShotaf) return;
     const dStr = toDateStr(viewShotafTask.date);
     let routine = routines.find((r) => toDateStr(new Date(r.routine_date)) === dStr);
     if (!routine) {
@@ -958,7 +977,7 @@ export default function Constraints() {
       <Dialog open={!!viewShotafTask} onOpenChange={(o) => !o && setViewShotafTask(null)}>
         <DialogContent className="sm:max-w-[400px]" dir="rtl">
           <DialogHeader>
-            <DialogTitle>שינוי פלוגה לשוטף</DialogTitle>
+            <DialogTitle>{canEditShotaf ? "שינוי פלוגה לשוטף" : "שוטף"}</DialogTitle>
           </DialogHeader>
           {viewShotafTask && (
             <div className="space-y-3">
@@ -972,7 +991,7 @@ export default function Constraints() {
               </div>
               <div className="space-y-2">
                 <Label>פלוגה אחראית</Label>
-                <Select value={shotafPluga || "טרם הוחלט"} onValueChange={(v) => setShotafPluga(v === "טרם הוחלט" ? "" : v)}>
+                <Select disabled={!canEditShotaf} value={shotafPluga || "טרם הוחלט"} onValueChange={(v) => setShotafPluga(v === "טרם הוחלט" ? "" : v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="טרם הוחלט">טרם הוחלט</SelectItem>
@@ -990,8 +1009,11 @@ export default function Constraints() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setViewShotafTask(null)}>ביטול</Button>
-            <Button onClick={handleShotafPlugaChange}>שמור</Button>
+            {!canEditShotaf && (
+              <p className="text-xs text-muted-foreground ml-auto self-center">לצפייה בלבד — עריכת שוטף למנהלים ובעלי הרשאה</p>
+            )}
+            <Button variant="outline" onClick={() => setViewShotafTask(null)}>{canEditShotaf ? "ביטול" : "סגור"}</Button>
+            {canEditShotaf && <Button onClick={handleShotafPlugaChange}>שמור</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>

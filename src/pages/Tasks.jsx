@@ -290,7 +290,8 @@ export default function Tasks() {
 
   const handleTaskClick = (task) => {
     if (task.type === "shotaf") {
-      navigate("/shotaf");
+      // Straight to the שוטף tab on that task's day (see DailySummary.jsx).
+      navigate(`/daily-summary?tab=shotaf${task.date ? `&date=${task.date}` : ""}`);
     } else if (task.type === "event") {
       navigate("/constraints");
     } else if (task.type === "direct") {

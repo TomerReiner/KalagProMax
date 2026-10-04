@@ -15,8 +15,16 @@ import { cn } from "@/lib/utils";
 // that: when false every control here is inert (disabled selects/buttons,
 // no onClick/onValueChange firing) rather than hidden, so a viewer without
 // the permission still sees the day's assignments, just can't change them.
-export default function ShotafPanel({ editable }) {
-  const [selectedDate, setSelectedDate] = useState(() => new Date());
+// `initialDate` ("YYYY-MM-DD", optional) — the day to open on, when linked
+// here from a specific task (see DailySummary.jsx's ?date= param).
+function parseDateStr(str) {
+  if (!str || !/^\d{4}-\d{2}-\d{2}$/.test(str)) return null;
+  const [y, m, d] = str.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+export default function ShotafPanel({ editable, initialDate }) {
+  const [selectedDate, setSelectedDate] = useState(() => parseDateStr(initialDate) || new Date());
   const selectedDateStr = toDateStr(selectedDate);
   const [routine, setRoutine] = useState(null);
   const [loading, setLoading] = useState(true);

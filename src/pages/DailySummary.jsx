@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Loader2, Plus, Trash2, ClipboardList, FileText, Copy, Pencil, CalendarDays } from "lucide-react";
@@ -60,6 +61,15 @@ export default function DailySummaryPage() {
   const [user, setUser] = useState(null);
   const [myPermissions, setMyPermissions] = useState([]);
   const { previewRole } = usePreviewRole();
+  // ?tab=shotaf[&date=YYYY-MM-DD] — links from "המשימות שלי" / "משימות"
+  // land directly on the שוטף tab (on that task's day) instead of the
+  // default סיכום מסדר tab.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get("tab") === "shotaf" ? "shotaf" : "summary";
+  const initialShotafDate = searchParams.get("date");
+  const setActiveTab = (tab) => {
+    setSearchParams(tab === "shotaf" ? { tab: "shotaf" } : {}, { replace: true });
+  };
 
   useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
@@ -169,7 +179,7 @@ export default function DailySummaryPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="summary" dir="rtl">
+      <Tabs value={activeTab} onValueChange={setActiveTab} dir="rtl">
         <TabsList>
           <TabsTrigger value="summary" className="gap-1.5">
             <FileText className="w-3.5 h-3.5" />
@@ -243,7 +253,7 @@ export default function DailySummaryPage() {
         </TabsContent>
 
         <TabsContent value="shotaf" className="pt-4">
-          <ShotafPanel editable={canEditShotaf} />
+          <ShotafPanel editable={canEditShotaf} initialDate={initialShotafDate} />
         </TabsContent>
       </Tabs>
 

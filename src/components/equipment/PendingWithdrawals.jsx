@@ -87,7 +87,7 @@ export default function PendingWithdrawals({ onDecision }) {
               {r.items.map((item, idx) => (
                 <span key={idx} className="text-xs px-2 py-1 rounded-md bg-slate-100">
                   {item.name} ×{item.quantity}
-                  {item.returnable ? " · להחזרה" : ""}
+                  {item.returnable ? " · להחזרה" : ""}{item.custom ? " · לא מהמלאי" : ""}
                 </span>
               ))}
             </div>

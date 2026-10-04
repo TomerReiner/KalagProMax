@@ -16,8 +16,9 @@ import PendingWithdrawals from "@/components/equipment/PendingWithdrawals";
 import MyWithdrawalRequests from "@/components/equipment/MyWithdrawalRequests";
 import ReturnConfirmDialog from "@/components/equipment/ReturnConfirmDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { WAREHOUSES, toDateStr } from "@/lib/constants";
+import { WAREHOUSES, FREE_TEXT_WAREHOUSES } from "@/lib/constants";
 import { hasPermission, effectivePermissions } from "@/lib/permissions";
+import { createShortageOrder, uncoveredShortages } from "@/lib/playbox";
 
 export default function Equipment() {
   const { toast } = useToast();
@@ -155,7 +156,12 @@ export default function Equipment() {
     if (!returnTarget) return;
     setReturnSaving(true);
     try {
-      const wi = items.find((i) => i.warehouse === returnTarget.warehouse && i.name === returnTarget.item_name);
+      // A free-text item (never in the inventory list, see
+      // FREE_TEXT_WAREHOUSES) was never deducted, so returning it credits
+      // nothing back — even if an item with the same name exists by now.
+      const wi = returnTarget.untracked
+        ? null
+        : items.find((i) => i.warehouse === returnTarget.warehouse && i.name === returnTarget.item_name);
       if (wi) {
         await base44.entities.WarehouseItem.update(wi.id, { quantity: wi.quantity + returnTarget.quantity });
       }
@@ -194,12 +200,9 @@ export default function Equipment() {
         toast({ title: "אין חוסרים כרגע", duration: 2000 });
         return;
       }
-      const existingOrders = await base44.entities.PlayboxOrder.list("-order_date", 500);
-      const hasPendingAuto = (name) =>
-        existingOrders.some((o) => o.item === name && o.auto_generated && (o.status === "ממתין" || o.status === "הוזמן"));
-      const toCreate = shortages
-        .filter((it) => !hasPendingAuto(it.name))
-        .map((it) => ({ item: it.name, quantity: Number(it.target_quantity) - Number(it.quantity), warehouse: it.warehouse }));
+      const toCreate = await uncoveredShortages(
+        shortages.map((it) => ({ name: it.name, quantity: Number(it.target_quantity) - Number(it.quantity), warehouse: it.warehouse }))
+      );
       if (toCreate.length === 0) {
         toast({ title: "כל החוסרים כבר הוזמנו", description: "יש הזמנה אוטומטית ממתינה לכל חוסר קיים", duration: 2500 });
         return;
@@ -216,18 +219,9 @@ export default function Equipment() {
     if (!confirmShortages) return;
     setGeneratingOrders(true);
     try {
-      const today = toDateStr(new Date());
-      for (const s of confirmShortages) {
-        await base44.entities.PlayboxOrder.create({
-          order_date: today,
-          item: s.item,
-          quantity: s.quantity,
-          notes: "נוצר אוטומטית ממעקב חוסרי מחסן",
-          status: "ממתין",
-          auto_generated: true,
-        });
-      }
-      toast({ title: `נוצרו ${confirmShortages.length} הזמנות לחוסרים`, description: "אפשר לראות ולהזמין בפועל בעמוד הפלייבוקס", duration: 3000 });
+      // One Playbox order holding every shortage as its own item line.
+      await createShortageOrder(confirmShortages, "נוצר אוטומטית ממעקב חוסרי מחסן");
+      toast({ title: `נוצרה הזמנה עם ${confirmShortages.length} פריטים לחוסרים`, description: "ההזמנה ממתינה לאישור בעמוד הפלייבוקס", duration: 3000 });
       setConfirmShortages(null);
     } catch (err) {
       toast({ variant: "destructive", title: "שגיאה ביצירת הזמנות", description: err.message });
@@ -361,25 +355,25 @@ export default function Equipment() {
           variant={shortageCount > 0 ? "default" : "outline"}
         >
           {generatingOrders ? <Loader2 className="w-4 h-4 animate-spin" /> : <PackageSearch className="w-4 h-4" />}
-          צור הזמנות בפלייבוקס לכל החוסרים{shortageCount > 0 ? ` (${shortageCount})` : ""}
+          צור הזמנת פלייבוקס לכל החוסרים{shortageCount > 0 ? ` (${shortageCount})` : ""}
         </Button>
       )}
 
       <Dialog open={!!confirmShortages} onOpenChange={(o) => !o && setConfirmShortages(null)}>
         <DialogContent className="sm:max-w-[420px]" dir="rtl">
           <DialogHeader>
-            <DialogTitle>יצירת הזמנות לחוסרים</DialogTitle>
+            <DialogTitle>יצירת הזמנת השלמה לחוסרים</DialogTitle>
           </DialogHeader>
           {confirmShortages && (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                ייווצרו {confirmShortages.length} בקשות הזמנה חדשות בפלייבוקס:
+                תיווצר הזמנה אחת בפלייבוקס עם {confirmShortages.length} הפריטים הבאים:
               </p>
               <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
                 {confirmShortages.map((s, i) => (
                   <div key={i} className="flex items-center justify-between gap-2 text-sm border border-border rounded-lg p-2.5 bg-white flex-wrap">
                     <div>
-                      <p className="font-medium">{s.item}</p>
+                      <p className="font-medium">{s.name}</p>
                       <p className="text-xs text-muted-foreground">{s.warehouse}</p>
                     </div>
                     <span className="text-xs text-muted-foreground">× {s.quantity}</span>
@@ -399,7 +393,7 @@ export default function Equipment() {
                   יוצר...
                 </>
               ) : (
-                `אשר ויצירת ${confirmShortages?.length ?? ""} הזמנות`
+                "אשר וצור הזמנה"
               )}
             </Button>
           </DialogFooter>
@@ -445,6 +439,11 @@ export default function Equipment() {
           <h2 className="text-sm font-semibold text-muted-foreground">
             {isSearching ? `תוצאות חיפוש (${warehouseItems.length})` : `פריטים במחסן (${warehouseItems.length})`}
           </h2>
+          {!isSearching && FREE_TEXT_WAREHOUSES.includes(activeWarehouse) && (
+            <span className="text-xs text-muted-foreground ml-auto mr-2 hidden sm:inline">
+              אפשר למשוך גם פריטים שלא ברשימה
+            </span>
+          )}
           {canAddItem && (
             <Button
               size="sm"

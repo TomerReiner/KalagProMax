@@ -1,5 +1,10 @@
 import { getSupabaseAdmin, getCallerProfile } from './_lib/supabaseAdmin.js';
 
+// Must match FREE_TEXT_WAREHOUSES in src/lib/constants.js — the only
+// warehouses where a withdrawal may include items that aren't in
+// warehouse_items at all (`custom: true`).
+const FREE_TEXT_WAREHOUSES = ['מחסן קרביץ', 'מחסן קליר'];
+
 // Any signed-in user can request a withdrawal. Mirrors
 // base44/functions/processWithdrawal/entry.ts.
 export default async function handler(req, res) {
@@ -15,12 +20,21 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'חסרים פרטים (מחסן, פריטים, פלוגה)' });
     }
 
+    if (items.some((i) => i.custom) && !FREE_TEXT_WAREHOUSES.includes(warehouse)) {
+      return res.status(400).json({ error: `במחסן "${warehouse}" אפשר למשוך רק פריטים מהרשימה` });
+    }
+
     const today = new Date().toISOString().split('T')[0];
     const { data: withdrawal, error } = await supabase
       .from('withdrawal_requests')
       .insert({
         warehouse,
-        items: items.map((i) => ({ name: i.name, quantity: i.quantity, returnable: i.returnable })),
+        items: items.map((i) => ({
+          name: i.name,
+          quantity: i.quantity,
+          returnable: !!i.returnable,
+          ...(i.custom ? { custom: true } : {}),
+        })),
         requested_by_name: caller.profile?.full_name || caller.user.email,
         pluga,
         request_date: today,

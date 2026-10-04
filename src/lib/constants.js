@@ -11,6 +11,12 @@ export const PLUGOT = ["פארן", "בשור", "צין", "רמון", "תמר"];
 // label, so the rename had to happen in the data too, not just here).
 export const WAREHOUSES = ["מכולה", "מחסן קרביץ", "מחסן קליר"];
 
+// Warehouses whose contents change too fast to keep a full inventory list —
+// a withdrawal from these may also include free-text items that aren't in
+// warehouse_items at all (see src/components/equipment/WithdrawalForm.jsx and
+// api/approve-withdrawal.js, which skips the stock check for those).
+export const FREE_TEXT_WAREHOUSES = ["מחסן קרביץ", "מחסן קליר"];
+
 export const LOCATIONS = [
   "מגורים כללי",
   "מגורי בנים",

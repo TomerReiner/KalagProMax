@@ -458,11 +458,13 @@ export default function Klaf() {
     await Promise.all([loadData(), loadWeekData()]);
   };
 
-  const handleTaskClick = (task) => {
+  // שוטף tasks open the שוטף tab itself (not the default "סיכום מסדר" tab
+  // that the old "/shotaf" redirect landed on), on that task's own day.
+  const handleTaskClick = (task, taskDateStr) => {
     if (task.type === "event") {
       navigate("/constraints");
     } else if (task.type === "shotaf") {
-      navigate("/shotaf");
+      navigate(`/daily-summary?tab=shotaf${taskDateStr ? `&date=${taskDateStr}` : ""}`);
     }
   };
 
@@ -601,7 +603,7 @@ export default function Klaf() {
                       </div>
                       {task.type !== "direct" && (
                         <button
-                          onClick={() => handleTaskClick(task)}
+                          onClick={() => handleTaskClick(task, day.dateStr)}
                           className="shrink-0 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
                           title="קפוץ למקור"
                         >

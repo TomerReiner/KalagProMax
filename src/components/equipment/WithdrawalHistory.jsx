@@ -149,7 +149,7 @@ export default function WithdrawalHistory({ open, onClose }) {
                   {w.items?.map((i, idx) => (
                     <span key={idx} className="text-xs bg-slate-100 px-2 py-0.5 rounded">
                       {i.name} ×{i.quantity}
-                      {i.returnable ? " ↩" : ""}
+                      {i.returnable ? " ↩" : ""}{i.custom ? " · לא מהמלאי" : ""}
                     </span>
                   ))}
                 </div>

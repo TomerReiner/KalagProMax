@@ -5,10 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PLUGOT, PLUGA_COLORS, toDateStr } from "@/lib/constants";
+import { PLUGOT, PLUGA_COLORS, WAREHOUSES, FREE_TEXT_WAREHOUSES } from "@/lib/constants";
+import { createShortageOrder } from "@/lib/playbox";
 import { cn } from "@/lib/utils";
 import { base44 } from "@/api/base44Client";
-import { Loader2, Copy, Search, X } from "lucide-react";
+import { Loader2, Copy, Search, X, Plus } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
 // `allItems` is every item from every warehouse (Equipment.jsx's own
@@ -31,6 +32,12 @@ export default function WithdrawalForm({ open, onClose, allItems, defaultWarehou
   const [requestWarehouse, setRequestWarehouse] = useState(defaultWarehouse);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState({});
+  // Free-text items — only for FREE_TEXT_WAREHOUSES (מחסן קרביץ / מחסן
+  // קליר), whose contents change too fast to keep a full inventory list.
+  // [{ name, quantity, returnable }]; sent with `custom: true` so
+  // api/approve-withdrawal.js skips the stock check/deduction for them.
+  const [customItems, setCustomItems] = useState([]);
+  const [customDraft, setCustomDraft] = useState({ name: "", quantity: 1, returnable: false });
   const [pluga, setPluga] = useState(userPluga || "");
   const [expectedReturnDate, setExpectedReturnDate] = useState("");
   const [notes, setNotes] = useState("");
@@ -51,6 +58,8 @@ export default function WithdrawalForm({ open, onClose, allItems, defaultWarehou
       setRequestWarehouse(defaultWarehouse);
       setSearch("");
       setSelected({});
+      setCustomItems([]);
+      setCustomDraft({ name: "", quantity: 1, returnable: false });
       setPluga(userPluga || "");
       setExpectedReturnDate("");
       setNotes("");
@@ -92,12 +101,40 @@ export default function WithdrawalForm({ open, onClose, allItems, defaultWarehou
           duration: 3000,
         });
         setRequestWarehouse(item.warehouse);
+        setCustomItems([]);
         return { [item.id]: 1 };
       }
-      if (selectedWarehouses.size === 0) setRequestWarehouse(item.warehouse);
+      if (selectedWarehouses.size === 0 && item.warehouse !== requestWarehouse) {
+        setRequestWarehouse(item.warehouse);
+        setCustomItems([]);
+      }
       next[item.id] = 1;
       return next;
     });
+  };
+
+  const allowsCustom = FREE_TEXT_WAREHOUSES.includes(requestWarehouse);
+
+  const switchWarehouse = (w) => {
+    if (w === requestWarehouse) return;
+    setRequestWarehouse(w);
+    setSelected({});
+    setCustomItems([]);
+    setSearch("");
+  };
+
+  const addCustomItem = () => {
+    const name = customDraft.name.trim();
+    if (!name) return;
+    // An item that IS in this warehouse's list should be picked from the
+    // list, so its stock actually gets deducted on approval.
+    if (allItems.some((i) => i.warehouse === requestWarehouse && i.name === name)) {
+      setError(`"${name}" כבר קיים ברשימת המחסן — סמנו אותו מהרשימה למעלה`);
+      return;
+    }
+    setError("");
+    setCustomItems((prev) => [...prev, { name, quantity: Math.max(1, Number(customDraft.quantity) || 1), returnable: customDraft.returnable }]);
+    setCustomDraft({ name: "", quantity: 1, returnable: false });
   };
 
   const setQty = (id, qty) => {
@@ -139,27 +176,12 @@ export default function WithdrawalForm({ open, onClose, allItems, defaultWarehou
   // pending/ordered auto order.
   const createAutoOrders = async (shortageList, forPluga) => {
     try {
-      const existingOrders = await base44.entities.PlayboxOrder.list("-order_date", 500);
-      const hasPendingAuto = (name) =>
-        existingOrders.some(
-          (o) => o.item === name && o.auto_generated && (o.status === "ממתין" || o.status === "הוזמן")
-        );
-      const today = toDateStr(new Date());
-      const created = [];
-      for (const s of shortageList) {
-        if (hasPendingAuto(s.name)) continue;
-        await base44.entities.PlayboxOrder.create({
-          order_date: today,
-          item: s.name,
-          quantity: s.shortfall,
-          notes: "נוצר אוטומטית ממשיכת ציוד",
-          status: "ממתין",
-          auto_generated: true,
-        });
-        created.push(s);
-      }
-      if (created.length === 0) return null;
-      const lines = created.map((s) => `• ${s.name} × ${s.shortfall}`);
+      const created = await createShortageOrder(
+        shortageList.map((sh) => ({ name: sh.name, quantity: sh.shortfall })),
+        "נוצר אוטומטית ממשיכת ציוד"
+      );
+      if (!created) return null;
+      const lines = created.items.map((i) => `• ${i.name} × ${i.quantity}`);
       return `בקשת השלמת מלאי לפלייבוקס (${forPluga}):\n${lines.join("\n")}`;
     } catch (err) {
       toast({ title: "שגיאה ביצירת הזמנת השלמה", description: err.message, variant: "destructive" });
@@ -174,7 +196,10 @@ export default function WithdrawalForm({ open, onClose, allItems, defaultWarehou
       const createdText = shortageList.length > 0 ? await createAutoOrders(shortageList, pluga) : null;
       await base44.functions.invoke("processWithdrawal", {
         warehouse: requestWarehouse,
-        items: selectedItems.map((i) => ({ name: i.name, quantity: i.quantity, returnable: i.returnable })),
+        items: [
+          ...selectedItems.map((i) => ({ name: i.name, quantity: i.quantity, returnable: i.returnable })),
+          ...(allowsCustom ? customItems.map((i) => ({ ...i, custom: true })) : []),
+        ],
         pluga,
         expected_return_date: expectedReturnDate || undefined,
         notes: notes || undefined,
@@ -199,8 +224,8 @@ export default function WithdrawalForm({ open, onClose, allItems, defaultWarehou
   };
 
   const handleSubmitClick = () => {
-    if (selectedItems.length === 0) {
-      setError("בחר לפחות פריט אחד");
+    if (selectedItems.length === 0 && customItems.length === 0) {
+      setError(allowsCustom ? "בחר פריט מהרשימה או הוסף פריט שלא ברשימה" : "בחר לפחות פריט אחד");
       return;
     }
     if (!pluga) {
@@ -303,6 +328,21 @@ export default function WithdrawalForm({ open, onClose, allItems, defaultWarehou
               <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">{error}</div>
             )}
             <div className="space-y-4">
+              <div className="flex gap-1.5 bg-slate-100 rounded-lg p-1">
+                {WAREHOUSES.map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    onClick={() => switchWarehouse(w)}
+                    className={cn(
+                      "flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                      requestWarehouse === w ? "bg-white text-slate-900 shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {w}
+                  </button>
+                ))}
+              </div>
               <div>
                 <Label className="mb-2 block">פריטים זמינים</Label>
                 <div className="relative mb-2">
@@ -367,6 +407,57 @@ export default function WithdrawalForm({ open, onClose, allItems, defaultWarehou
                   )}
                 </div>
               </div>
+              {allowsCustom && (
+                <div className="space-y-2 border border-dashed border-slate-300 rounded-lg p-3 bg-slate-50">
+                  <Label className="block">פריטים שלא ברשימה ({requestWarehouse})</Label>
+                  <p className="text-xs text-muted-foreground">
+                    במחסן הזה אפשר למשוך גם פריט שלא מתועד במלאי — הוא לא יורד מהמלאי באישור.
+                  </p>
+                  {customItems.map((ci, idx) => (
+                    <div key={idx} className="flex items-center gap-2 text-sm bg-white border rounded-lg px-2.5 py-1.5">
+                      <span className="flex-1 font-medium">{ci.name} ×{ci.quantity}</span>
+                      {ci.returnable && <span className="text-xs text-amber-700">להחזרה</span>}
+                      <button
+                        type="button"
+                        onClick={() => setCustomItems((prev) => prev.filter((_, i) => i !== idx))}
+                        className="text-muted-foreground hover:text-destructive"
+                        title="הסר"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      value={customDraft.name}
+                      onChange={(e) => setCustomDraft((d) => ({ ...d, name: e.target.value }))}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustomItem(); } }}
+                      placeholder="שם הפריט"
+                      className="h-8 flex-1 min-w-[140px]"
+                    />
+                    <Input
+                      type="number"
+                      min="1"
+                      value={customDraft.quantity}
+                      onChange={(e) => setCustomDraft((d) => ({ ...d, quantity: e.target.value }))}
+                      className="h-8 w-16"
+                    />
+                    <label className="flex items-center gap-1 text-xs cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={customDraft.returnable}
+                        onChange={(e) => setCustomDraft((d) => ({ ...d, returnable: e.target.checked }))}
+                        className="w-3.5 h-3.5"
+                      />
+                      להחזרה
+                    </label>
+                    <Button type="button" size="sm" variant="outline" onClick={addCustomItem} disabled={!customDraft.name.trim()} className="h-8 gap-1">
+                      <Plus className="w-3.5 h-3.5" />
+                      הוסף
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>פלוגה *</Label>
                 {userPluga ? (

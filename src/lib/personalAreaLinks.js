@@ -26,14 +26,14 @@ export function getPersonalAreaLinks({ effectiveRole, delegatedPermissions }) {
     });
   }
 
-  if (hasAnyPermission(delegatedPermissions, ["playbox_orders"])) {
-    links.push({
-      to: "/playbox",
-      label: "פלייבוקס",
-      description: "ריכוז הזמנות לשבוע הקרוב",
-      icon: Truck,
-    });
-  }
+  // Open to everyone — anyone can create/edit an order; approving it is
+  // what needs playbox_orders (see src/pages/Playbox.jsx).
+  links.push({
+    to: "/playbox",
+    label: "פלייבוקס",
+    description: hasAnyPermission(delegatedPermissions, ["playbox_orders"]) ? "הזמנות ואישורן" : "יצירה ומעקב של הזמנות",
+    icon: Truck,
+  });
 
   // מווסתים: only for a non-קלפ delegated meal_regulators holder — a real
   // קלפ already sees their pluga's meal-regulators breakdown embedded at the
