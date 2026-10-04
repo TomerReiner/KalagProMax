@@ -441,7 +441,7 @@ export default function Equipment() {
           </h2>
           {!isSearching && FREE_TEXT_WAREHOUSES.includes(activeWarehouse) && (
             <span className="text-xs text-muted-foreground ml-auto mr-2 hidden sm:inline">
-              אפשר למשוך גם פריטים שלא ברשימה
+              מחסן פתוח — משיכה בכתיבה חופשית
             </span>
           )}
           {canAddItem && (

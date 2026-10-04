@@ -72,11 +72,12 @@ export default function WithdrawalForm({ open, onClose, allItems, defaultWarehou
 
   const normalizedSearch = search.trim().toLowerCase();
   const isSearching = normalizedSearch.length > 0;
-  // While searching, list matches from every warehouse at once (with a
-  // warehouse badge per row below). Otherwise, only the warehouse this
-  // request is currently pinned to — same as before.
+  // While searching, list matches from every list-based warehouse at once
+  // (with a warehouse badge per row below). Otherwise, only the warehouse
+  // this request is currently pinned to. FREE_TEXT_WAREHOUSES never show a
+  // list here — they're "open" warehouses, withdrawn from by typing items.
   const items = isSearching
-    ? allItems.filter((i) => i.name.toLowerCase().includes(normalizedSearch))
+    ? allItems.filter((i) => !FREE_TEXT_WAREHOUSES.includes(i.warehouse) && i.name.toLowerCase().includes(normalizedSearch))
     : allItems.filter((i) => i.warehouse === requestWarehouse);
 
   const toggleItem = (item) => {
@@ -123,17 +124,17 @@ export default function WithdrawalForm({ open, onClose, allItems, defaultWarehou
     setSearch("");
   };
 
-  const addCustomItem = () => {
+  const draftAsItem = () => {
     const name = customDraft.name.trim();
-    if (!name) return;
-    // An item that IS in this warehouse's list should be picked from the
-    // list, so its stock actually gets deducted on approval.
-    if (allItems.some((i) => i.warehouse === requestWarehouse && i.name === name)) {
-      setError(`"${name}" כבר קיים ברשימת המחסן — סמנו אותו מהרשימה למעלה`);
-      return;
-    }
+    if (!name) return null;
+    return { name, quantity: Math.max(1, Number(customDraft.quantity) || 1), returnable: customDraft.returnable };
+  };
+
+  const addCustomItem = () => {
+    const item = draftAsItem();
+    if (!item) return;
     setError("");
-    setCustomItems((prev) => [...prev, { name, quantity: Math.max(1, Number(customDraft.quantity) || 1), returnable: customDraft.returnable }]);
+    setCustomItems((prev) => [...prev, item]);
     setCustomDraft({ name: "", quantity: 1, returnable: false });
   };
 
@@ -189,6 +190,11 @@ export default function WithdrawalForm({ open, onClose, allItems, defaultWarehou
     }
   };
 
+  // A row typed into the free-text fields but never "הוסף"-ed still counts
+  // — pressing "שלח בקשה" right after typing shouldn't silently drop it.
+  const pendingDraft = allowsCustom ? draftAsItem() : null;
+  const submitCustomItems = pendingDraft ? [...customItems, pendingDraft] : customItems;
+
   const doSubmit = async (shortageList) => {
     setSaving(true);
     setError("");
@@ -198,7 +204,7 @@ export default function WithdrawalForm({ open, onClose, allItems, defaultWarehou
         warehouse: requestWarehouse,
         items: [
           ...selectedItems.map((i) => ({ name: i.name, quantity: i.quantity, returnable: i.returnable })),
-          ...(allowsCustom ? customItems.map((i) => ({ ...i, custom: true })) : []),
+          ...(allowsCustom ? submitCustomItems.map((i) => ({ ...i, custom: true })) : []),
         ],
         pluga,
         expected_return_date: expectedReturnDate || undefined,
@@ -224,8 +230,8 @@ export default function WithdrawalForm({ open, onClose, allItems, defaultWarehou
   };
 
   const handleSubmitClick = () => {
-    if (selectedItems.length === 0 && customItems.length === 0) {
-      setError(allowsCustom ? "בחר פריט מהרשימה או הוסף פריט שלא ברשימה" : "בחר לפחות פריט אחד");
+    if (allowsCustom ? submitCustomItems.length === 0 : selectedItems.length === 0) {
+      setError(allowsCustom ? "כתוב לפחות פריט אחד" : "בחר לפחות פריט אחד");
       return;
     }
     if (!pluga) {
@@ -322,101 +328,46 @@ export default function WithdrawalForm({ open, onClose, allItems, defaultWarehou
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle>משיכת ציוד{isSearching ? "" : ` - ${requestWarehouse}`}</DialogTitle>
+              <DialogTitle>משיכת ציוד - {requestWarehouse}</DialogTitle>
             </DialogHeader>
             {error && (
               <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">{error}</div>
             )}
             <div className="space-y-4">
-              <div className="flex gap-1.5 bg-slate-100 rounded-lg p-1">
-                {WAREHOUSES.map((w) => (
-                  <button
-                    key={w}
-                    type="button"
-                    onClick={() => switchWarehouse(w)}
-                    className={cn(
-                      "flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
-                      requestWarehouse === w ? "bg-white text-slate-900 shadow-sm" : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    {w}
-                  </button>
-                ))}
-              </div>
-              <div>
-                <Label className="mb-2 block">פריטים זמינים</Label>
-                <div className="relative mb-2">
-                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-                  <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="חיפוש פריט בכל המחסנים..."
-                    className="pr-9 pl-9"
-                  />
-                  {isSearching && (
+              <div className="space-y-2">
+                <Label className="block">מאיזה מחסן מושכים? *</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {WAREHOUSES.map((w) => (
                     <button
+                      key={w}
                       type="button"
-                      onClick={() => setSearch("")}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      title="נקה חיפוש"
+                      onClick={() => switchWarehouse(w)}
+                      className={cn(
+                        "px-2 py-2.5 rounded-lg border-2 text-sm font-medium transition-colors",
+                        requestWarehouse === w
+                          ? "bg-slate-900 border-slate-900 text-white"
+                          : "bg-white border-border text-slate-600 hover:border-slate-400"
+                      )}
                     >
-                      <X className="w-4 h-4" />
+                      {w}
+                      <span className={cn("block text-[10px] font-normal", requestWarehouse === w ? "text-slate-300" : "text-muted-foreground")}>
+                        {FREE_TEXT_WAREHOUSES.includes(w) ? "כתיבה חופשית" : "מתוך רשימה"}
+                      </span>
                     </button>
-                  )}
-                </div>
-                <div className="space-y-2 max-h-[280px] overflow-y-auto">
-                  {items.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      {isSearching ? "לא נמצאו פריטים תואמים" : "אין פריטים במחסן זה"}
-                    </p>
-                  ) : (
-                    items.map((item) => (
-                      <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg border bg-white">
-                        <input
-                          type="checkbox"
-                          checked={!!selected[item.id]}
-                          onChange={() => toggleItem(item)}
-                          className="w-4 h-4"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="text-sm font-medium truncate">{item.name}</p>
-                            {isSearching && (
-                              <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 shrink-0">
-                                {item.warehouse}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            זמין: {item.quantity}
-                            {item.returnable ? " · להחזרה" : ""}
-                          </p>
-                        </div>
-                        {selected[item.id] && (
-                          <Input
-                            type="number"
-                            min="1"
-                            max={item.quantity}
-                            value={selected[item.id]}
-                            onChange={(e) => setQty(item.id, Number(e.target.value))}
-                            className="w-20 h-8"
-                          />
-                        )}
-                      </div>
-                    ))
-                  )}
+                  ))}
                 </div>
               </div>
-              {allowsCustom && (
-                <div className="space-y-2 border border-dashed border-slate-300 rounded-lg p-3 bg-slate-50">
-                  <Label className="block">פריטים שלא ברשימה ({requestWarehouse})</Label>
+
+              {allowsCustom ? (
+                <div className="space-y-2">
+                  <Label className="block">פריטים למשיכה</Label>
                   <p className="text-xs text-muted-foreground">
-                    במחסן הזה אפשר למשוך גם פריט שלא מתועד במלאי — הוא לא יורד מהמלאי באישור.
+                    {requestWarehouse} הוא מחסן פתוח — כותבים כל פריט שרוצים למשוך, בלי לבחור מרשימה.
                   </p>
                   {customItems.map((ci, idx) => (
                     <div key={idx} className="flex items-center gap-2 text-sm bg-white border rounded-lg px-2.5 py-1.5">
                       <span className="flex-1 font-medium">{ci.name} ×{ci.quantity}</span>
-                      {ci.returnable && <span className="text-xs text-amber-700">להחזרה</span>}
+                      {ci.returnable && <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">להחזרה</span>}
                       <button
                         type="button"
                         onClick={() => setCustomItems((prev) => prev.filter((_, i) => i !== idx))}
@@ -427,20 +378,21 @@ export default function WithdrawalForm({ open, onClose, allItems, defaultWarehou
                       </button>
                     </div>
                   ))}
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2 border border-dashed border-slate-300 rounded-lg p-2 bg-slate-50">
                     <Input
                       value={customDraft.name}
                       onChange={(e) => setCustomDraft((d) => ({ ...d, name: e.target.value }))}
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustomItem(); } }}
                       placeholder="שם הפריט"
-                      className="h-8 flex-1 min-w-[140px]"
+                      className="h-9 flex-1 min-w-[140px] bg-white"
                     />
                     <Input
                       type="number"
                       min="1"
                       value={customDraft.quantity}
                       onChange={(e) => setCustomDraft((d) => ({ ...d, quantity: e.target.value }))}
-                      className="h-8 w-16"
+                      className="h-9 w-16 bg-white"
+                      title="כמות"
                     />
                     <label className="flex items-center gap-1 text-xs cursor-pointer select-none">
                       <input
@@ -451,10 +403,75 @@ export default function WithdrawalForm({ open, onClose, allItems, defaultWarehou
                       />
                       להחזרה
                     </label>
-                    <Button type="button" size="sm" variant="outline" onClick={addCustomItem} disabled={!customDraft.name.trim()} className="h-8 gap-1">
+                    <Button type="button" size="sm" variant="outline" onClick={addCustomItem} disabled={!customDraft.name.trim()} className="h-9 gap-1">
                       <Plus className="w-3.5 h-3.5" />
                       הוסף
                     </Button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <Label className="mb-2 block">פריטים זמינים</Label>
+                  <div className="relative mb-2">
+                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                    <Input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="חיפוש פריט..."
+                      className="pr-9 pl-9"
+                    />
+                    {isSearching && (
+                      <button
+                        type="button"
+                        onClick={() => setSearch("")}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        title="נקה חיפוש"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2 max-h-[280px] overflow-y-auto">
+                    {items.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        {isSearching ? "לא נמצאו פריטים תואמים" : "אין פריטים במחסן זה"}
+                      </p>
+                    ) : (
+                      items.map((item) => (
+                        <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg border bg-white">
+                          <input
+                            type="checkbox"
+                            checked={!!selected[item.id]}
+                            onChange={() => toggleItem(item)}
+                            className="w-4 h-4"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="text-sm font-medium truncate">{item.name}</p>
+                              {isSearching && item.warehouse !== requestWarehouse && (
+                                <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 shrink-0">
+                                  {item.warehouse}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              זמין: {item.quantity}
+                              {item.returnable ? " · להחזרה" : ""}
+                            </p>
+                          </div>
+                          {selected[item.id] && (
+                            <Input
+                              type="number"
+                              min="1"
+                              max={item.quantity}
+                              value={selected[item.id]}
+                              onChange={(e) => setQty(item.id, Number(e.target.value))}
+                              className="w-20 h-8"
+                            />
+                          )}
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               )}
