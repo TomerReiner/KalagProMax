@@ -35,20 +35,18 @@ export function getPersonalAreaLinks({ effectiveRole, delegatedPermissions }) {
     icon: Truck,
   });
 
-  // מווסתים: only for a non-קלפ delegated meal_regulators holder — a real
-  // קלפ already sees their pluga's meal-regulators breakdown embedded at the
-  // bottom of their own /klaf page (see src/pages/Klaf.jsx's
-  // MealRegulatorsBreakdown), so a second entry point here would be
-  // redundant for them. Reuses /klaf's existing isDelegatedOnly view rather
-  // than a new route.
-  if (effectiveRole !== "קלפ" && plugotFor(delegatedPermissions, "meal_regulators").length > 0) {
-    links.push({
-      to: "/klaf",
-      label: "מווסתים",
-      description: "ניהול רשימת המווסתים לארוחות",
-      icon: UtensilsCrossed,
-    });
-  }
+  // מווסתים — open to everyone (read-only for most; see
+  // src/pages/MealRegulators.jsx). The description tells the manager apart.
+  links.push({
+    to: "/meal-regulators",
+    label: "מווסתים",
+    description: hasAnyPermission(delegatedPermissions, ["meal_regulators_manager"])
+      ? "ניהול המווסתים לכל הפלוגות ושליחת משימות לקל\"פים"
+      : plugotFor(delegatedPermissions, "meal_regulators").length > 0
+        ? "עריכת המווסתים של הפלוגות שלך"
+        : "מי המווסתים היום ובאיזו שעה נכנסים",
+    icon: UtensilsCrossed,
+  });
 
   return links;
 }

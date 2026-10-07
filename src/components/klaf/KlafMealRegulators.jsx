@@ -4,8 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, Users2, Plus, X, Phone } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
-
-const MEAL_TYPES = ["צהריים", "ערב"];
+import { MEAL_TYPES } from "@/lib/mealRegulators";
 const EMPTY_FORM = { name: "", phone: "" };
 
 // Klaf page section for the meal_regulators delegated permission (see
@@ -18,7 +17,13 @@ const EMPTY_FORM = { name: "", phone: "" };
 // in (the viewed pluga / selected day) rather than owning its own pickers,
 // so it stays in sync with whatever day the rest of the Klaf page is
 // showing.
-export default function KlafMealRegulators({ pluga, dateStr }) {
+//
+// `readOnly` — shows the same data with no inputs (whoever can't edit this
+// pluga on this day, see canEditPlugaRegulators in src/lib/mealRegulators.js).
+// `hideTitle` — when the parent card already names the section.
+// `onChange` — called after every successful save, so a parent showing a
+// "filled / not filled yet" status can refresh.
+export default function KlafMealRegulators({ pluga, dateStr, readOnly = false, hideTitle = false, onChange }) {
   const { toast } = useToast();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +56,7 @@ export default function KlafMealRegulators({ pluga, dateStr }) {
         await base44.entities.MealRegulator.create({ pluga, meal_date: dateStr, meal_type: mealType, regulators });
       }
       await load();
+      onChange?.();
     } catch (err) {
       toast({ title: "שגיאה בשמירה", description: err.message, variant: "destructive" });
     }
@@ -68,6 +74,7 @@ export default function KlafMealRegulators({ pluga, dateStr }) {
         await base44.entities.MealRegulator.create({ pluga, meal_date: dateStr, meal_type: mealType, regulators: [], entry_time });
       }
       await load();
+      onChange?.();
     } catch (err) {
       toast({ title: "שגיאה בשמירה", description: err.message, variant: "destructive" });
     }
@@ -89,10 +96,12 @@ export default function KlafMealRegulators({ pluga, dateStr }) {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-1.5">
-        <Users2 className="w-4 h-4 text-slate-500" />
-        <h2 className="text-sm font-semibold text-muted-foreground">מווסתים</h2>
-      </div>
+      {!hideTitle && (
+        <div className="flex items-center gap-1.5">
+          <Users2 className="w-4 h-4 text-slate-500" />
+          <h2 className="text-sm font-semibold text-muted-foreground">מווסתים</h2>
+        </div>
+      )}
       {loading ? (
         <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
       ) : (
@@ -113,7 +122,11 @@ export default function KlafMealRegulators({ pluga, dateStr }) {
                   <p className="text-sm font-medium">{mealType}</p>
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-muted-foreground">שעת כניסה</span>
+                    {readOnly ? (
+                      <span className="text-sm font-medium">{row?.entry_time || "—"}</span>
+                    ) : (
                     <Input
+                      key={`${row?.id || "new"}-${row?.entry_time || ""}`}
                       type="time"
                       defaultValue={row?.entry_time || ""}
                       onBlur={(e) => {
@@ -122,6 +135,7 @@ export default function KlafMealRegulators({ pluga, dateStr }) {
                       }}
                       className="h-8 text-sm w-[110px]"
                     />
+                    )}
                   </div>
                 </div>
                 <div className="space-y-1.5">
@@ -137,12 +151,15 @@ export default function KlafMealRegulators({ pluga, dateStr }) {
                           </a>
                         )}
                       </div>
-                      <button onClick={() => removeRegulator(mealType, i)} className="text-muted-foreground hover:text-destructive shrink-0">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+                      {!readOnly && (
+                        <button onClick={() => removeRegulator(mealType, i)} className="text-muted-foreground hover:text-destructive shrink-0">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
+                {!readOnly && (
                 <div className="space-y-1">
                   <p className="text-[10px] text-muted-foreground">שם ומספר טלפון (הטלפון אופציונלי)</p>
                   {/* flex + min-width instead of a fixed 3-column grid: with
@@ -173,6 +190,7 @@ export default function KlafMealRegulators({ pluga, dateStr }) {
                     </Button>
                   </div>
                 </div>
+                )}
               </div>
             );
           })}

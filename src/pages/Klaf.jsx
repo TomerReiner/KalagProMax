@@ -14,32 +14,10 @@ import { usePreviewRole } from "@/lib/previewRoleContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { plugotFor, effectivePermissions } from "@/lib/permissions";
 import { getFoodPickupState, FOOD_PICKUP_STATE_LABELS } from "@/lib/eventConfirmations";
-import KlafMealRegulators from "@/components/klaf/KlafMealRegulators";
-import { usePageTitleOverride } from "@/lib/pageTitleContext";
+import MealRegulatorsDaySummary from "@/components/mealregulators/MealRegulatorsDaySummary";
+import { MEAL_TASK_KIND } from "@/lib/mealRegulators";
 
 const WEEKDAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
-
-// One card per pluga the viewer is authorized for (meal_regulators is
-// scoped, so several plugot at once is the common case, not the exception —
-// an admin, via effectivePermissions, is implicitly authorized for all of
-// them). Each pluga gets its own color-coded card so it's obvious which
-// pluga's data is which.
-function MealRegulatorsBreakdown({ plugot, dateStr }) {
-  if (!plugot.length) return null;
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {plugot.map((p) => {
-        const color = PLUGA_COLORS[p];
-        return (
-          <div key={p} className={cn("rounded-xl border-2 p-3", color?.light, color?.border)}>
-            <p className="text-sm font-bold mb-2">{p}</p>
-            <KlafMealRegulators pluga={p} dateStr={dateStr} />
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 // Builds the checkbox-style task list for one day, from that day's own
 // routine/events/direct-tasks rows. Pulled out of the render so it can be run
@@ -247,24 +225,6 @@ export default function Klaf() {
 
   const goToday = () => setSelectedDate(new Date());
 
-  // AppLayout's title bar shows "המשימות שלי" for this route by default
-  // (src/lib/pageTitles.js), but this same route renders a completely
-  // different, much narrower page below (see isDelegatedOnly further down)
-  // for someone who only holds the delegated meal_regulators permission —
-  // that view should say "מווסתים" instead. usePageTitleOverride is a hook,
-  // so it has to be called unconditionally, before any of this component's
-  // early returns below — hence this small early (and null-safe, since
-  // `user` may still be loading) recomputation of the same isDelegatedOnly
-  // condition computed again, in full, further down once `user` is known.
-  const earlyEffectiveRole = previewRole || user?.role;
-  const earlyIsKlaf = earlyEffectiveRole === "קלפ";
-  // previewRole-aware — see the doc comment on effectivePermissions in
-  // src/lib/permissions.js (a true role preview should reflect a plain
-  // member of that role, not always the real signed-in admin's full access).
-  const earlyDelegatedPermissions = effectivePermissions(myPermissions, earlyEffectiveRole);
-  const earlyIsDelegatedOnly = !earlyIsKlaf && plugotFor(earlyDelegatedPermissions, "meal_regulators").length > 0;
-  usePageTitleOverride(earlyIsDelegatedOnly ? "מווסתים" : null, earlyIsDelegatedOnly ? UtensilsCrossed : null);
-
   if (!user) {
     return (
       <div className="flex justify-center py-20">
@@ -278,41 +238,14 @@ export default function Klaf() {
   // previewRole-aware — see the doc comment on effectivePermissions in
   // src/lib/permissions.js.
   const delegatedPermissions = effectivePermissions(myPermissions, effectiveRole);
-  // Every pluga this signed-in user is authorized to manage meal regulators
-  // for (see src/lib/permissions.js / AdminPanel's "הרשאות מיוחדות") — for
-  // most קלפ holders that's just their own pluga, but a delegated grant (or
-  // an admin's automatic one) can cover several at once. A non-קלפ holder of
-  // this permission gets a minimal version of this page (see isDelegatedOnly
-  // below) instead of being blocked outright.
-  const regulatorPlugot = plugotFor(delegatedPermissions, "meal_regulators");
-  const isDelegatedOnly = !isKlaf && regulatorPlugot.length > 0;
 
-  if (!isKlaf && !isDelegatedOnly) {
+  // Meal regulators moved to their own page (src/pages/MealRegulators.jsx,
+  // "/meal-regulators") — a non-קלפ who used to land on a narrow
+  // regulators-only version of this page now goes there instead.
+  if (!isKlaf) {
     return (
       <div className="text-center py-20 text-muted-foreground">
         <p>דף זה זמין לקלפ בלבד</p>
-      </div>
-    );
-  }
-
-  if (isDelegatedOnly) {
-    return (
-      <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
-        <div className="text-center">
-          <div className="flex items-center justify-center gap-3 mb-1">
-            <Button variant="outline" size="icon" onClick={goPrevDay}>
-              <ChevronRight className="w-5 h-5" />
-            </Button>
-            <h1 className="text-xl font-bold">{formatHebrewDate(selectedDate)}</h1>
-            <Button variant="outline" size="icon" onClick={goNextDay}>
-              <ChevronLeft className="w-5 h-5" />
-            </Button>
-          </div>
-          <button onClick={goToday} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-            חזור להיום
-          </button>
-        </div>
-        <MealRegulatorsBreakdown plugot={regulatorPlugot} dateStr={dateStr} />
       </div>
     );
   }
@@ -461,7 +394,11 @@ export default function Klaf() {
   // שוטף tasks open the שוטף tab itself (not the default "סיכום מסדר" tab
   // that the old "/shotaf" redirect landed on), on that task's own day.
   const handleTaskClick = (task, taskDateStr) => {
-    if (task.type === "event") {
+    if (task.directTask?.kind === MEAL_TASK_KIND) {
+      // The אחראי מווסתים asked this pluga to fill in its regulators — the
+      // מווסתים page lets this קלפ edit their own pluga on that day.
+      navigate(`/meal-regulators?date=${taskDateStr}`);
+    } else if (task.type === "event") {
       navigate("/constraints");
     } else if (task.type === "shotaf") {
       navigate(`/daily-summary?tab=shotaf${taskDateStr ? `&date=${taskDateStr}` : ""}`);
@@ -601,7 +538,17 @@ export default function Klaf() {
                           </p>
                         )}
                       </div>
-                      {task.type !== "direct" && (
+                      {task.directTask?.kind === MEAL_TASK_KIND ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleTaskClick(task, day.dateStr)}
+                          className="shrink-0 h-8 gap-1 text-xs bg-white"
+                        >
+                          <UtensilsCrossed className="w-3.5 h-3.5" />
+                          מלא מווסתים
+                        </Button>
+                      ) : task.type !== "direct" && (
                         <button
                           onClick={() => handleTaskClick(task, day.dateStr)}
                           className="shrink-0 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
@@ -666,11 +613,10 @@ export default function Klaf() {
         <KlafSummary dateStr={dateStr} />
       </div>
 
-      {regulatorPlugot.length > 0 && (
-        <div className="mt-2">
-          <MealRegulatorsBreakdown plugot={regulatorPlugot} dateStr={dateStr} />
-        </div>
-      )}
+      {/* Read-only: every pluga whose regulators were filled in for the
+          selected day — renders nothing at all if none were. Editing lives
+          on /meal-regulators (reached from a "מילוי מווסתים" task). */}
+      <MealRegulatorsDaySummary dateStr={dateStr} title="מווסתים להיום" className="mt-2" />
 
       <DirectTaskForm
         open={formOpen}

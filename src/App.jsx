@@ -23,6 +23,7 @@ import Statistics from '@/pages/Statistics';
 import Equipment from '@/pages/Equipment';
 import Playbox from '@/pages/Playbox';
 import PersonalArea from '@/pages/PersonalArea';
+import MealRegulators from '@/pages/MealRegulators';
 // Add page imports here
 // Note: the Base44 MCP OAuth-consent page (src/pages/OAuthConsent.jsx) was
 // dropped here — it authorized AI clients against Base44's own hosted MCP
@@ -87,6 +88,7 @@ const AuthenticatedApp = () => {
           <Route path="/equipment" element={<Equipment />} />
           <Route path="/playbox" element={<Playbox />} />
           <Route path="/personal" element={<PersonalArea />} />
+          <Route path="/meal-regulators" element={<MealRegulators />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
