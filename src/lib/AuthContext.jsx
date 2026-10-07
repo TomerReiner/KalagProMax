@@ -1,6 +1,7 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { base44 } from '@/api/base44Client';
+import { isTestMode } from '@/lib/testMode';
 
 const AuthContext = createContext();
 
@@ -51,6 +52,15 @@ export const AuthProvider = ({ children }) => {
       setIsLoadingPublicSettings(true);
       setAuthError(null);
       setAppPublicSettings({});
+
+      // Test mode never opens a real Supabase session, so skip straight to
+      // the (instant, in-memory) profile check instead of waiting on
+      // supabase.auth.getSession() to come back empty.
+      if (isTestMode()) {
+        await checkUserAuth();
+        setIsLoadingPublicSettings(false);
+        return;
+      }
 
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {

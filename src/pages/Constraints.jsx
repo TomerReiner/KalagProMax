@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, ChevronRight, ChevronLeft, CalendarRange, Repeat } from "lucide-react";
+import { Loader2, Plus, ChevronRight, ChevronLeft, CalendarRange, Repeat, ClipboardCheck, Pencil, Phone } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,8 +11,11 @@ import { PLUGOT, PLUGA_COLORS, EVENT_COLORS, toDateStr, formatHebrewDate, getSho
 import TimeInput from "@/components/TimeInput";
 import EventForm from "@/components/constraints/EventForm";
 import RecurringManageDialog from "@/components/constraints/RecurringManageDialog";
+import EventConfirmationsOverview from "@/components/constraints/EventConfirmationsOverview";
 import { cn } from "@/lib/utils";
 import { computeLayout } from "@/lib/calendarLayout";
+import { usePreviewRole } from "@/lib/previewRoleContext";
+import { hasPermission, effectivePermissions } from "@/lib/permissions";
 
 const DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 const HOUR_START = 6;
@@ -52,14 +55,34 @@ export default function Constraints() {
   const [eventFormOpen, setEventFormOpen] = useState(false);
   const [eventEditing, setEventEditing] = useState(null);
   const [viewEvent, setViewEvent] = useState(null);
+  const [viewEventContacts, setViewEventContacts] = useState([]);
+  const [viewEventContactsLoading, setViewEventContactsLoading] = useState(false);
   const [recurringEvents, setRecurringEvents] = useState([]);
   const [routines, setRoutines] = useState([]);
   const [recurringOverrides, setRecurringOverrides] = useState([]);
   const [recurringManageOpen, setRecurringManageOpen] = useState(false);
+  const [confirmationsOverviewOpen, setConfirmationsOverviewOpen] = useState(false);
   const [viewRecurring, setViewRecurring] = useState(null);
   const [moveDate, setMoveDate] = useState("");
   const [viewShotafTask, setViewShotafTask] = useState(null);
   const [shotafPluga, setShotafPluga] = useState("");
+
+  // The שוטף quick-edit below (click a dotted שוטף block) follows the same
+  // rule as the שוטף tab itself (src/components/dailysummary/ShotafPanel.jsx):
+  // anyone can see who's assigned, only an admin or a shotaf_schedule holder
+  // can change it. The database enforces the same rule (migration 0019).
+  const [user, setUser] = useState(null);
+  const [myPermissions, setMyPermissions] = useState([]);
+  const { previewRole } = usePreviewRole();
+  useEffect(() => {
+    base44.auth.me().then(setUser).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (!user?.id) { setMyPermissions([]); return; }
+    base44.entities.UserPermission.filter({ user_id: user.id }).then(setMyPermissions).catch(() => setMyPermissions([]));
+  }, [user?.id]);
+  const effectiveRole = previewRole || user?.role;
+  const canEditShotaf = effectiveRole === "admin" || hasPermission(effectivePermissions(myPermissions, effectiveRole), "shotaf_schedule");
 
   const [form, setForm] = useState({
     plugas: [],
@@ -147,13 +170,26 @@ export default function Constraints() {
   }, [loadRecurring]);
 
   const handleEventSubmit = async (formData) => {
+    // eventEditing is deliberately NOT cleared here. It used to be cleared
+    // right after the update, but that's a state change fired while the
+    // dialog is still open (EventForm's handleSubmit hasn't called onClose
+    // yet — it's still awaiting this very function) — the resulting
+    // re-render passed EventForm an `editing` that had gone from the real
+    // event to null while `open` stayed true, which made its effects treat
+    // it as "dialog now showing a blank new-event form" for a frame and
+    // reset local contacts/confirmations state. It's cleared once, correctly,
+    // in the EventForm's onClose handler below instead.
+    let event;
     if (eventEditing) {
-      await base44.entities.Event.update(eventEditing.id, formData);
-      setEventEditing(null);
+      event = await base44.entities.Event.update(eventEditing.id, formData);
     } else {
-      await base44.entities.Event.create(formData);
+      event = await base44.entities.Event.create(formData);
     }
     await loadEvents();
+    // Returned so EventForm can attach any contacts (e.g. bus driver
+    // details) added while creating a brand-new event, which only get a
+    // real event_id to point at once this create actually happens.
+    return event;
   };
 
   const handleEventDelete = async (id) => {
@@ -167,6 +203,30 @@ export default function Constraints() {
     setEventEditing(e);
     setEventFormOpen(true);
   };
+
+  // Contacts for the read-only "פרטי אירוע" dialog — so clicking an event on
+  // the schedule shows who to call, not just the fields also editable in the
+  // edit form. Independent of EventForm's own contacts state (that one only
+  // exists while the edit dialog is open).
+  const loadViewEventContacts = useCallback(async (eventId) => {
+    if (!eventId) {
+      setViewEventContacts([]);
+      return;
+    }
+    setViewEventContactsLoading(true);
+    try {
+      const data = await base44.entities.EventContact.filter({ event_id: eventId });
+      setViewEventContacts(data);
+    } catch {
+      setViewEventContacts([]);
+    } finally {
+      setViewEventContactsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadViewEventContacts(viewEvent?.id);
+  }, [viewEvent?.id, loadViewEventContacts]);
 
   const hours = Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => HOUR_START + i);
   const totalHeight = (HOUR_END - HOUR_START) * HOUR_HEIGHT;
@@ -264,7 +324,7 @@ export default function Constraints() {
   };
 
   const handleShotafPlugaChange = async () => {
-    if (!viewShotafTask) return;
+    if (!viewShotafTask || !canEditShotaf) return;
     const dStr = toDateStr(viewShotafTask.date);
     let routine = routines.find((r) => toDateStr(new Date(r.routine_date)) === dStr);
     if (!routine) {
@@ -303,7 +363,7 @@ export default function Constraints() {
             <p className="text-xs text-muted-foreground">{viewMode === "day" ? "לוח זמנים יומי" : "לוח זמנים שבועי"}</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button onClick={() => {
             setEditing(null);
             setForm({ plugas: [], constraint_date: toDateStr(new Date()), start_time: "08:00", end_time: "10:00", title: "", details: "" });
@@ -320,10 +380,14 @@ export default function Constraints() {
             <Repeat className="w-4 h-4" />
             אירועים קבועים
           </Button>
+          <Button onClick={() => setConfirmationsOverviewOpen(true)} variant="outline" className="gap-2">
+            <ClipboardCheck className="w-4 h-4" />
+            מעקב אישורי הגעה
+          </Button>
         </div>
       </div>
 
-      <div className="flex items-center justify-between bg-white rounded-xl border border-border p-3">
+      <div className="flex items-center justify-between bg-white rounded-xl border border-border p-3 flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" onClick={goPrev}>
             <ChevronRight className="w-4 h-4" />
@@ -704,12 +768,14 @@ export default function Constraints() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setViewConstraint(null)}>סגור</Button>
+            <Button variant="ghost" onClick={() => setViewConstraint(null)}>סגור</Button>
             <Button
-              variant="secondary"
+              variant="outline"
+              className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
               onClick={() => viewConstraint && openEdit(viewConstraint)}
             >
-              עריכה
+              <Pencil className="w-4 h-4" />
+              עריכת אילוץ
             </Button>
             <Button
               variant="destructive"
@@ -796,6 +862,31 @@ export default function Constraints() {
                   )}
                 </div>
               )}
+              <div className="border-t pt-3 space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-slate-500" />
+                  <p className="text-xs font-semibold text-slate-700">אנשי קשר</p>
+                  {viewEventContactsLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+                </div>
+                {!viewEventContactsLoading && viewEventContacts.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">אין אנשי קשר לאירוע זה</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {viewEventContacts.map((c) => (
+                      <div key={c.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 bg-white flex-wrap">
+                        <p className="text-sm font-medium">
+                          {c.name}
+                          {c.role_label && <span className="text-xs text-muted-foreground"> · {c.role_label}</span>}
+                        </p>
+                        <a href={`tel:${c.phone}`} className="text-xs text-blue-600 flex items-center gap-1 font-medium">
+                          <Phone className="w-3 h-3" />
+                          {c.phone}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
           <DialogFooter>
@@ -886,7 +977,7 @@ export default function Constraints() {
       <Dialog open={!!viewShotafTask} onOpenChange={(o) => !o && setViewShotafTask(null)}>
         <DialogContent className="sm:max-w-[400px]" dir="rtl">
           <DialogHeader>
-            <DialogTitle>שינוי פלוגה לשוטף</DialogTitle>
+            <DialogTitle>{canEditShotaf ? "שינוי פלוגה לשוטף" : "שוטף"}</DialogTitle>
           </DialogHeader>
           {viewShotafTask && (
             <div className="space-y-3">
@@ -900,12 +991,17 @@ export default function Constraints() {
               </div>
               <div className="space-y-2">
                 <Label>פלוגה אחראית</Label>
-                <Select value={shotafPluga || "טרם הוחלט"} onValueChange={(v) => setShotafPluga(v === "טרם הוחלט" ? "" : v)}>
+                <Select disabled={!canEditShotaf} value={shotafPluga || "טרם הוחלט"} onValueChange={(v) => setShotafPluga(v === "טרם הוחלט" ? "" : v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="טרם הוחלט">טרם הוחלט</SelectItem>
                     {PLUGOT.map((p) => (
-                      <SelectItem key={p} value={p}>{p}</SelectItem>
+                      <SelectItem key={p} value={p}>
+                        <span className="flex items-center gap-2">
+                          <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p]?.dot)} />
+                          {p}
+                        </span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -913,17 +1009,29 @@ export default function Constraints() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setViewShotafTask(null)}>ביטול</Button>
-            <Button onClick={handleShotafPlugaChange}>שמור</Button>
+            {!canEditShotaf && (
+              <p className="text-xs text-muted-foreground ml-auto self-center">לצפייה בלבד — עריכת שוטף למנהלים ובעלי הרשאה</p>
+            )}
+            <Button variant="outline" onClick={() => setViewShotafTask(null)}>{canEditShotaf ? "ביטול" : "סגור"}</Button>
+            {canEditShotaf && <Button onClick={handleShotafPlugaChange}>שמור</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <EventForm
         open={eventFormOpen}
-        onClose={() => setEventFormOpen(false)}
+        onClose={() => {
+          setEventFormOpen(false);
+          setEventEditing(null);
+        }}
         onSubmit={handleEventSubmit}
         editing={eventEditing}
+      />
+
+      <EventConfirmationsOverview
+        open={confirmationsOverviewOpen}
+        onClose={() => setConfirmationsOverviewOpen(false)}
+        events={events}
       />
     </div>
   );

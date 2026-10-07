@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 
-export default function KlafConstraints({ pluga, dateStr }) {
+export default function KlafConstraints({ pluga, dateStr, onChange }) {
   const [constraints, setConstraints] = useState([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -19,9 +19,16 @@ export default function KlafConstraints({ pluga, dateStr }) {
   const loadConstraints = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await base44.entities.Constraint.filter({ pluga, constraint_date: dateStr });
-      data.sort((a, b) => (a.start_time || "").localeCompare(b.start_time || ""));
-      setConstraints(data);
+      // A constraint may target this pluga either via the singular `pluga`
+      // column (how this component itself saves one) or via the `plugas`
+      // array (how the admin's multi-select "אילוצים" page saves one) — a
+      // constraint created for several plugot at once must still show up
+      // here, so fetch the day's constraints and match both shapes client-side
+      // rather than filtering by `pluga` alone.
+      const data = await base44.entities.Constraint.filter({ constraint_date: dateStr });
+      const mine = data.filter((c) => c.pluga === pluga || c.plugas?.includes(pluga));
+      mine.sort((a, b) => (a.start_time || "").localeCompare(b.start_time || ""));
+      setConstraints(mine);
     } finally {
       setLoading(false);
     }
@@ -46,6 +53,7 @@ export default function KlafConstraints({ pluga, dateStr }) {
       setForm({ title: "", start_time: "", end_time: "", details: "" });
       setFormOpen(false);
       await loadConstraints();
+      onChange?.();
       toast({ title: "אילוץ נוסף", duration: 2000 });
     } finally {
       setSaving(false);

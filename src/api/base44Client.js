@@ -8,6 +8,8 @@
 // supabase/migrations/0001_init.sql — keep the two in sync if you add fields.
 
 import { supabase } from '@/lib/supabaseClient';
+import { isTestMode, disableTestMode } from '@/lib/testMode';
+import { getMockEntity, getMockProfile, updateMockProfile } from '@/testdata/mockStore';
 
 // ---------------------------------------------------------------------------
 // entities
@@ -34,8 +36,18 @@ async function currentUserStamp() {
 }
 
 function makeEntity(table, { stampOwner = true } = {}) {
+  // Test mode (src/lib/testMode.js): every method below defers to an
+  // in-memory store instead of touching Supabase at all — for every table,
+  // not just the ones src/testdata/fixtures.js pre-seeds (an unlisted table
+  // just starts out empty there). The check happens per call — not once at
+  // module load — since which project (real vs. in-memory) to hit can
+  // change at runtime.
+  const mock = () => (isTestMode() ? getMockEntity(table) : null);
+
   return {
     async list(sort, limit) {
+      const m = mock();
+      if (m) return m.list(sort, limit);
       let q = supabase.from(table).select('*');
       q = applySort(q, sort);
       if (limit) q = q.limit(limit);
@@ -45,9 +57,24 @@ function makeEntity(table, { stampOwner = true } = {}) {
     },
 
     async filter(query = {}, sort, limit) {
+      const m = mock();
+      if (m) return m.filter(query, sort, limit);
       let q = supabase.from(table).select('*');
       for (const [key, value] of Object.entries(query)) {
-        q = q.eq(key, value);
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          // Range query: { gte, lte, gt, lt } — e.g. fetching a date range for
+          // Klaf.jsx's "today through Saturday" task list. The *_date columns
+          // this is used against are all plain 'YYYY-MM-DD' text, which
+          // compares lexicographically the same as chronologically, so plain
+          // Postgres comparison operators work. Any subset of the four keys
+          // may be given.
+          if ('gte' in value) q = q.gte(key, value.gte);
+          if ('lte' in value) q = q.lte(key, value.lte);
+          if ('gt' in value) q = q.gt(key, value.gt);
+          if ('lt' in value) q = q.lt(key, value.lt);
+        } else {
+          q = q.eq(key, value);
+        }
       }
       q = applySort(q, sort);
       if (limit) q = q.limit(limit);
@@ -57,12 +84,16 @@ function makeEntity(table, { stampOwner = true } = {}) {
     },
 
     async get(id) {
+      const m = mock();
+      if (m) return m.get(id);
       const { data, error } = await supabase.from(table).select('*').eq('id', id).maybeSingle();
       if (error) throw error;
       return data;
     },
 
     async create(payload) {
+      const m = mock();
+      if (m) return m.create(payload);
       const row = stampOwner ? { ...payload, ...(await currentUserStamp()) } : payload;
       const { data, error } = await supabase.from(table).insert(row).select().single();
       if (error) throw error;
@@ -70,6 +101,8 @@ function makeEntity(table, { stampOwner = true } = {}) {
     },
 
     async bulkCreate(payloads) {
+      const m = mock();
+      if (m) return m.bulkCreate(payloads);
       const stamp = stampOwner ? await currentUserStamp() : {};
       const rows = payloads.map((p) => ({ ...p, ...stamp }));
       const { data, error } = await supabase.from(table).insert(rows).select();
@@ -78,18 +111,24 @@ function makeEntity(table, { stampOwner = true } = {}) {
     },
 
     async update(id, payload) {
+      const m = mock();
+      if (m) return m.update(id, payload);
       const { data, error } = await supabase.from(table).update(payload).eq('id', id).select().single();
       if (error) throw error;
       return data;
     },
 
     async delete(id) {
+      const m = mock();
+      if (m) return m.delete(id);
       const { error } = await supabase.from(table).delete().eq('id', id);
       if (error) throw error;
       return true;
     },
 
     subscribe(callback) {
+      const m = mock();
+      if (m) return m.subscribe(callback);
       const channel = supabase
         .channel(`public:${table}:${Math.random().toString(36).slice(2)}`)
         .on('postgres_changes', { event: '*', schema: 'public', table }, () => callback())
@@ -110,6 +149,8 @@ const entities = {
   EquipmentHolding: makeEntity('equipment_holdings'),
   EquipmentSettings: makeEntity('equipment_settings'),
   Event: makeEntity('events'),
+  EventContact: makeEntity('event_contacts'),
+  EventConfirmation: makeEntity('event_confirmations'),
   Gap: makeEntity('gaps'),
   GapUpdate: makeEntity('gap_updates'),
   RecurringEvent: makeEntity('recurring_events'),
@@ -118,6 +159,28 @@ const entities = {
   User: makeEntity('profiles', { stampOwner: false }),
   WarehouseItem: makeEntity('warehouse_items'),
   WithdrawalRequest: makeEntity('withdrawal_requests'),
+  // Delegated-permissions feature (see supabase/migrations/0005_delegated_permissions.sql
+  // and src/lib/permissions.js). stampOwner here records which admin granted
+  // the permission (created_by/created_by_id) — user_id is the separate
+  // grantee column.
+  UserPermission: makeEntity('user_permissions'),
+  PlayboxOrder: makeEntity('playbox_orders'),
+  MealRegulator: makeEntity('meal_regulators'),
+  // Playbox stock/reorder-point tracking (see
+  // supabase/migrations/0008_playbox_stock_tracking.sql) — target vs.
+  // current quantity per pluga+item, feeding the "צור הזמנות לחוסרים" action
+  // in src/pages/Playbox.jsx.
+  PlayboxItem: makeEntity('playbox_items'),
+  // Admin broadcast announcements (see
+  // supabase/migrations/0017_announcements.sql) — created here client-side
+  // (readable by everyone, writable by admins only, same pattern as every
+  // other admin-managed table), then api/publish-announcement.js is invoked
+  // separately to actually push-notify every subscribed device.
+  Announcement: makeEntity('announcements'),
+  // Web Push subscriptions (see supabase/migrations/0016_push_subscriptions.sql).
+  // Not normally touched directly — api/push-subscribe.js / push-unsubscribe.js
+  // write here with the service-role key — but exposed for completeness.
+  PushSubscription: makeEntity('push_subscriptions', { stampOwner: false }),
 };
 
 // ---------------------------------------------------------------------------
@@ -125,6 +188,7 @@ const entities = {
 // ---------------------------------------------------------------------------
 
 async function getCurrentProfile() {
+  if (isTestMode()) return getMockProfile();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     const err = new Error('Not authenticated');
@@ -197,6 +261,10 @@ async function me() {
 }
 
 async function updateMe(data) {
+  if (isTestMode()) {
+    updateMockProfile(data);
+    return;
+  }
   const keys = Object.keys(data);
   if (keys.length === 1 && keys[0] === 'notifications_last_read') {
     const { error } = await supabase.rpc('mark_notifications_read', { read_at: data.notifications_last_read });
@@ -210,6 +278,13 @@ async function updateMe(data) {
 }
 
 async function logout(redirectUrl) {
+  if (isTestMode()) {
+    // Test mode never opened a real Supabase session, so there's nothing to
+    // sign out of — just turn test mode off and send them back to /login.
+    disableTestMode();
+    window.location.href = '/login';
+    return;
+  }
   await supabase.auth.signOut();
   if (redirectUrl) window.location.href = '/login';
 }
@@ -220,6 +295,7 @@ function redirectToLogin(returnUrl) {
 }
 
 async function isAuthenticated() {
+  if (isTestMode()) return true;
   const { data: { session } } = await supabase.auth.getSession();
   return !!session;
 }

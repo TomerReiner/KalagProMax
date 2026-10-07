@@ -1,0 +1,21 @@
+{
+  "name": "Binder Done That - קמנים 204 אימפריה",
+  "short_name": "Binder Done That",
+  "description": "ניהול פערים, לוז, משימות וציוד - קמנים 204 אימפריה",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#000000",
+  "lang": "he",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/98fcd8299_image.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

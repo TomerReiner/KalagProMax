@@ -1,0 +1,23 @@
+-- Playbox orders were always required to name one pluga even though the
+-- ordering itself isn't actually pluga-specific — Playbox doesn't split its
+-- catalog by pluga, so an order for e.g. toilet paper is just as relevant to
+-- every pluga as to whichever one happened to log it. This drops that
+-- requirement so someone adding an order manually (src/pages/Playbox.jsx)
+-- no longer has to pick a pluga at all.
+--
+-- playbox_orders_pluga_check (from 0005_delegated_permissions.sql —
+-- `pluga in (...)`) needs no change to allow this: a CHECK constraint only
+-- ever rejects a definite FALSE result, and `pluga in (...)` evaluates to
+-- unknown (neither true nor false) once pluga itself is null, so a null
+-- pluga already satisfies it.
+--
+-- The two paths that generate playbox_orders rows automatically are affected
+-- differently, on purpose:
+--  * Playbox.jsx's own "מלאי ומעקב חוסרים" gap generator keeps setting
+--    pluga — it credits a specific pluga's own playbox_items row back on
+--    receipt, so it still needs to know which pluga that is.
+--  * WithdrawalForm.jsx's target_quantity shortage flow now leaves pluga out
+--    entirely — see the updated comment there. That shared-warehouse
+--    shortage was never really "for" the withdrawing pluga; attributing it
+--    to them was only ever a workaround for this column being required.
+alter table public.playbox_orders alter column pluga drop not null;

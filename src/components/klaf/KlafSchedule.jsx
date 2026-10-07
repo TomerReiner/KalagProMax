@@ -3,6 +3,11 @@ import { cn } from "@/lib/utils";
 import { PLUGA_COLORS, EVENT_COLORS } from "@/lib/constants";
 import { computeLayout } from "@/lib/calendarLayout";
 
+// Constraints are shown on the same timeline as tasks (with a dashed border to
+// tell them apart) so a klaf can see at a glance where a task overlaps a
+// constraint window, instead of having to cross-reference a separate list.
+const CONSTRAINT_COLORS = { bg: "bg-red-100/80", text: "text-red-800" };
+
 const HOUR_START = 6;
 const HOUR_END = 23;
 const HOUR_HEIGHT = 40;
@@ -63,14 +68,16 @@ export default function KlafSchedule({ items, pluga }) {
             return blocks.map((block, i) => {
               const { column, totalColumns } = layout.get(block.id) || { column: 0, totalColumns: 1 };
               const w = 100 / totalColumns;
-              const colors = block.item.type === "event" ? EVENT_COLORS : plugaColor;
+              const isConstraint = block.item.type === "constraint";
+              const colors = isConstraint ? CONSTRAINT_COLORS : block.item.type === "event" ? EVENT_COLORS : plugaColor;
               return (
                 <div
                   key={i}
                   className={cn(
                     "absolute rounded-md p-1.5 text-xs overflow-hidden shadow-sm",
                     colors.bg,
-                    colors.text
+                    colors.text,
+                    isConstraint && "border-2 border-dashed border-red-400"
                   )}
                   style={{
                     top: block.top,
@@ -78,8 +85,12 @@ export default function KlafSchedule({ items, pluga }) {
                     right: `calc(${column * w}% + 2px)`,
                     width: `calc(${w}% - 4px)`,
                   }}
+                  title={block.item.details || undefined}
                 >
-                  <p className="font-semibold truncate">{block.item.title}</p>
+                  <p className="font-semibold truncate">
+                    {isConstraint && <span className="opacity-70">אילוץ: </span>}
+                    {block.item.title}
+                  </p>
                   <p className="opacity-80 text-[10px]">
                     {block.item.start_time}{block.item.end_time ? ` - ${block.item.end_time}` : ""}
                   </p>

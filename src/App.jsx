@@ -15,18 +15,35 @@ import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
 import Home from '@/pages/Home';
 import AppLayout from '@/components/AppLayout';
-import Shotaf from '@/pages/Shotaf';
 import Constraints from '@/pages/Constraints';
 import DailySummaryPage from '@/pages/DailySummary';
 import Tasks from '@/pages/Tasks';
 import Klaf from '@/pages/Klaf';
 import Statistics from '@/pages/Statistics';
 import Equipment from '@/pages/Equipment';
+import Playbox from '@/pages/Playbox';
+import PersonalArea from '@/pages/PersonalArea';
 // Add page imports here
 // Note: the Base44 MCP OAuth-consent page (src/pages/OAuthConsent.jsx) was
 // dropped here — it authorized AI clients against Base44's own hosted MCP
 // server, which no longer exists once the app runs on Supabase/Vercel. The
 // file is left on disk but is no longer imported or routed.
+// Note: src/pages/Shotaf.jsx (formerly its own "/shotaf" page/route, admin
+// only) was dropped from here too — its content merged into the
+// "/daily-summary" page as a second tab (see src/pages/DailySummary.jsx and
+// src/components/dailysummary/ShotafPanel.jsx), viewable by every role and
+// editable by whoever holds the new shotaf_schedule permission (or admin).
+// "/shotaf" itself now just redirects there, in case anything still links
+// to the old URL.
+// Note: src/pages/Delegations.jsx (a standalone "האצלות" page/tab for the
+// delegated-permissions feature) is likewise left on disk but unrouted — a
+// combined grab-bag tab wasn't wanted, so each capability now lives where it
+// naturally fits instead: frisa_pina and meal_regulators fold into Klaf.jsx,
+// and playbox_orders gets its own focused page/route (see Playbox.jsx /
+// /playbox above). Equipment withdrawal delegation (equipment_manager) lives
+// in Equipment.jsx's own canEdit check — it started as a separate flag on
+// profiles that predated this feature, and is now one of these permission
+// keys too (see src/lib/permissions.js).
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -61,13 +78,15 @@ const AuthenticatedApp = () => {
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Home />} />
-          <Route path="/shotaf" element={<Shotaf />} />
+          <Route path="/shotaf" element={<Navigate to="/daily-summary?tab=shotaf" replace />} />
           <Route path="/constraints" element={<Constraints />} />
           <Route path="/daily-summary" element={<DailySummaryPage />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/klaf" element={<Klaf />} />
           <Route path="/statistics" element={<Statistics />} />
           <Route path="/equipment" element={<Equipment />} />
+          <Route path="/playbox" element={<Playbox />} />
+          <Route path="/personal" element={<PersonalArea />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />

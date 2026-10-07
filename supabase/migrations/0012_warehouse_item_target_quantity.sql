@@ -1,0 +1,18 @@
+-- Equipment shortage → Playbox completion-order suggestion.
+--
+-- Whoever holds the playbox_orders or equipment_manager permission (see
+-- src/lib/permissions.js) can now set a target quantity per warehouse item
+-- (e.g. "we should always have 10 rolls of toilet paper in מחסן קרביץ").
+-- When someone submits an equipment withdrawal request that would drop an
+-- item below its target, src/components/equipment/WithdrawalForm.jsx offers
+-- to auto-create a playbox_orders row (auto_generated: true, same convention
+-- as 0008_playbox_stock_tracking.sql's pluga-level gap orders) for the
+-- shortfall, attributed to the withdrawing pluga (playbox_orders has no
+-- "shared/no pluga" concept — see that table's schema in 0001_init.sql).
+--
+-- default 0 (not nullable) matches playbox_items.target_quantity's
+-- convention: an item with no target configured just has target_quantity =
+-- 0, which a real (non-negative) remaining-quantity can never fall below, so
+-- "no target set" and "never flag a shortage" fall out for free without any
+-- null-handling in the app.
+alter table public.warehouse_items add column if not exists target_quantity numeric not null default 0;

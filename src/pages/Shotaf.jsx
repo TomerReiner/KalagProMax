@@ -1,3 +1,9 @@
+// Unrouted — left on disk but no longer imported from src/App.jsx, same
+// convention as src/pages/Delegations.jsx. This page's content moved into
+// src/components/dailysummary/ShotafPanel.jsx, now rendered as the "שוטף"
+// tab of src/pages/DailySummary.jsx (merged with "סיכום מסדר" into one tab,
+// per the feature request, with editing now gated by the shotaf_schedule
+// permission instead of being admin-only — see src/lib/permissions.js).
 import React, { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { Loader2, Sun, Sunset, Moon, ChevronRight, ChevronLeft } from "lucide-react";
@@ -183,7 +189,16 @@ export default function Shotaf() {
                 </SelectTrigger>
                 <SelectContent>
                   {SHOTAF_OPTIONS.map((p) => (
-                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                    <SelectItem key={p} value={p}>
+                      {PLUGA_COLORS[p] ? (
+                        <span className="flex items-center gap-2">
+                          <span className={cn("w-3 h-3 rounded-full", PLUGA_COLORS[p].dot)} />
+                          {p}
+                        </span>
+                      ) : (
+                        p
+                      )}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>

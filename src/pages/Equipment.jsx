@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Package, Plus, History, Settings, Pencil, Trash2, Bell, BellRing, Download } from "lucide-react";
+import { Loader2, Package, Plus, History, Settings, Pencil, Trash2, Bell, BellRing, Download, PackageSearch, Search, X } from "lucide-react";
 import * as XLSX from "xlsx";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { usePreviewRole } from "@/lib/previewRoleContext";
 import WarehouseItemForm from "@/components/equipment/WarehouseItemForm";
@@ -14,8 +15,10 @@ import EquipmentSettingsDialog from "@/components/equipment/EquipmentSettingsDia
 import PendingWithdrawals from "@/components/equipment/PendingWithdrawals";
 import MyWithdrawalRequests from "@/components/equipment/MyWithdrawalRequests";
 import ReturnConfirmDialog from "@/components/equipment/ReturnConfirmDialog";
-
-const WAREHOUSES = ["מכולה", "מחסן קרביץ", "מחסן לוגיסטי"];
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { WAREHOUSES, FREE_TEXT_WAREHOUSES } from "@/lib/constants";
+import { hasPermission, effectivePermissions } from "@/lib/permissions";
+import { createShortageOrder, uncoveredShortages } from "@/lib/playbox";
 
 export default function Equipment() {
   const { toast } = useToast();
@@ -23,8 +26,14 @@ export default function Equipment() {
   const { previewRole, previewPluga } = usePreviewRole();
   const [settings, setSettings] = useState(null);
   const [items, setItems] = useState([]);
+  const [myPermissions, setMyPermissions] = useState([]);
+  const [permissionsLoading, setPermissionsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [activeWarehouse, setActiveWarehouse] = useState(WAREHOUSES[0]);
+  // Cross-warehouse item search (feature request: "לעשות חיפוש על כל
+  // המוצרים מכל המחסנים") — when non-empty, overrides the warehouse-tab
+  // filter below with a search across every warehouse's items at once.
+  const [search, setSearch] = useState("");
   const [itemFormOpen, setItemFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [withdrawalOpen, setWithdrawalOpen] = useState(false);
@@ -33,6 +42,11 @@ export default function Equipment() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [returnTarget, setReturnTarget] = useState(null);
   const [returnSaving, setReturnSaving] = useState(false);
+  const [generatingOrders, setGeneratingOrders] = useState(false);
+  // Non-null while the confirm-before-creating dialog is open — the exact
+  // {item, quantity, warehouse} rows handleConfirmShortageOrders is about to
+  // create (already deduped against pending auto orders).
+  const [confirmShortages, setConfirmShortages] = useState(null);
 
   const loadData = useCallback(async () => {
     const [settingsData, itemsData, holdingsData] = await Promise.all([
@@ -50,15 +64,38 @@ export default function Equipment() {
     loadData().finally(() => setLoading(false));
   }, [loadData]);
 
+  // "אחראי משיכות ציוד" used to be its own profiles.equipment_manager flag;
+  // it's now the equipment_manager delegated permission instead (see
+  // src/lib/permissions.js), granted the same way as every other permission
+  // in AdminPanel's "הרשאות מיוחדות" section.
+  useEffect(() => {
+    if (!user?.id) return;
+    base44.entities.UserPermission.filter({ user_id: user.id })
+      .then(setMyPermissions)
+      .catch(() => setMyPermissions([]))
+      .finally(() => setPermissionsLoading(false));
+  }, [user?.id]);
+
   const effectiveRole = previewRole || user?.role;
   const effectivePluga = previewRole === "קלפ" ? previewPluga : user?.pluga;
   const isAdmin = effectiveRole === "admin";
   const isKlaf = effectiveRole === "קלפ";
   const isResponsible = settings?.responsible_klaf_id === user?.id;
-  const canEdit = isAdmin || isResponsible || user?.equipment_manager;
+  // previewRole-aware — see the doc comment on effectivePermissions in
+  // src/lib/permissions.js (a true role preview should reflect a plain
+  // member of that role, not always the real signed-in admin's full access).
+  const myEffectivePermissions = effectivePermissions(myPermissions, effectiveRole);
+  const isEquipmentManager = hasPermission(myEffectivePermissions, "equipment_manager");
+  const canEdit = isAdmin || isResponsible || isEquipmentManager;
   const canAddItem = canEdit || isKlaf;
+  // Who's allowed to set an item's target quantity (used to detect a
+  // shortage at withdrawal time and suggest a Playbox completion order) —
+  // specifically playbox_orders or equipment_manager, per the feature
+  // request, not the broader canEdit (which also includes isResponsible,
+  // a separate legacy per-item mechanism unrelated to either permission).
+  const canSetTargets = isAdmin || isEquipmentManager || hasPermission(myEffectivePermissions, "playbox_orders");
 
-  if (!user || loading) {
+  if (!user || loading || permissionsLoading) {
     return (
       <div className="flex justify-center py-20">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -72,7 +109,19 @@ export default function Equipment() {
     );
   }
 
-  const warehouseItems = items.filter((i) => i.warehouse === activeWarehouse);
+  const normalizedSearch = search.trim().toLowerCase();
+  const isSearching = normalizedSearch.length > 0;
+  // While searching, this replaces the active-warehouse filter entirely and
+  // spans every warehouse at once — see the warehouse badge added per row
+  // below, since results can now mix warehouses.
+  const warehouseItems = isSearching
+    ? items.filter((i) => i.name.toLowerCase().includes(normalizedSearch))
+    : items.filter((i) => i.warehouse === activeWarehouse);
+  // Across every warehouse, not just activeWarehouse — the shortage-orders
+  // button above acts on all of them at once.
+  const shortageCount = items.filter(
+    (i) => Number(i.target_quantity) > 0 && Number(i.quantity) < Number(i.target_quantity)
+  ).length;
 
   const handleItemSubmit = async (data) => {
     if (editingItem) {
@@ -107,7 +156,12 @@ export default function Equipment() {
     if (!returnTarget) return;
     setReturnSaving(true);
     try {
-      const wi = items.find((i) => i.warehouse === returnTarget.warehouse && i.name === returnTarget.item_name);
+      // A free-text item (never in the inventory list, see
+      // FREE_TEXT_WAREHOUSES) was never deducted, so returning it credits
+      // nothing back — even if an item with the same name exists by now.
+      const wi = returnTarget.untracked
+        ? null
+        : items.find((i) => i.warehouse === returnTarget.warehouse && i.name === returnTarget.item_name);
       if (wi) {
         await base44.entities.WarehouseItem.update(wi.id, { quantity: wi.quantity + returnTarget.quantity });
       }
@@ -118,6 +172,61 @@ export default function Equipment() {
       toast({ variant: "destructive", title: "שגיאה", description: err.message });
     } finally {
       setReturnSaving(false);
+    }
+  };
+
+  // "צור הזמנות בפלייבוקס לכל החוסרים" — same idea as Playbox.jsx's own
+  // per-pluga "צור הזמנות לחוסרים" (0008_playbox_stock_tracking.sql), but for
+  // warehouse_items.target_quantity shortages (0012_warehouse_item_target_quantity.sql)
+  // across every warehouse, not just the shortfall WithdrawalForm.jsx detects
+  // inline for whatever's actually being withdrawn right now. Only visible
+  // to canSetTargets, same permission that can set a target in the first
+  // place. Dedup is by item name alone, matching WithdrawalForm.jsx's own
+  // shortage-to-order flow: an auto order already pending for this item from
+  // anywhere already covers this shared-warehouse shortage, regardless of
+  // which warehouse it was found short in.
+  //
+  // Two-step, same pattern as Playbox.jsx's own gap-order button: this
+  // computes exactly what WOULD be created (already deduped) and opens a
+  // confirm dialog listing it; nothing is actually created until
+  // handleConfirmShortageOrders below runs.
+  const handleOpenShortageConfirm = async () => {
+    setGeneratingOrders(true);
+    try {
+      const shortages = items.filter(
+        (it) => Number(it.target_quantity) > 0 && Number(it.quantity) < Number(it.target_quantity)
+      );
+      if (shortages.length === 0) {
+        toast({ title: "אין חוסרים כרגע", duration: 2000 });
+        return;
+      }
+      const toCreate = await uncoveredShortages(
+        shortages.map((it) => ({ name: it.name, quantity: Number(it.target_quantity) - Number(it.quantity), warehouse: it.warehouse }))
+      );
+      if (toCreate.length === 0) {
+        toast({ title: "כל החוסרים כבר הוזמנו", description: "יש הזמנה אוטומטית ממתינה לכל חוסר קיים", duration: 2500 });
+        return;
+      }
+      setConfirmShortages(toCreate);
+    } catch (err) {
+      toast({ variant: "destructive", title: "שגיאה בבדיקת החוסרים", description: err.message });
+    } finally {
+      setGeneratingOrders(false);
+    }
+  };
+
+  const handleConfirmShortageOrders = async () => {
+    if (!confirmShortages) return;
+    setGeneratingOrders(true);
+    try {
+      // One Playbox order holding every shortage as its own item line.
+      await createShortageOrder(confirmShortages, "נוצר אוטומטית ממעקב חוסרי מחסן");
+      toast({ title: `נוצרה הזמנה עם ${confirmShortages.length} פריטים לחוסרים`, description: "ההזמנה ממתינה לאישור בעמוד הפלייבוקס", duration: 3000 });
+      setConfirmShortages(null);
+    } catch (err) {
+      toast({ variant: "destructive", title: "שגיאה ביצירת הזמנות", description: err.message });
+    } finally {
+      setGeneratingOrders(false);
     }
   };
 
@@ -238,7 +347,79 @@ export default function Equipment() {
 
       {canEdit && <PendingWithdrawals onDecision={loadData} />}
 
-      <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
+      {canSetTargets && (
+        <Button
+          onClick={handleOpenShortageConfirm}
+          disabled={generatingOrders}
+          className="w-full gap-1.5"
+          variant={shortageCount > 0 ? "default" : "outline"}
+        >
+          {generatingOrders ? <Loader2 className="w-4 h-4 animate-spin" /> : <PackageSearch className="w-4 h-4" />}
+          צור הזמנת פלייבוקס לכל החוסרים{shortageCount > 0 ? ` (${shortageCount})` : ""}
+        </Button>
+      )}
+
+      <Dialog open={!!confirmShortages} onOpenChange={(o) => !o && setConfirmShortages(null)}>
+        <DialogContent className="sm:max-w-[420px]" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>יצירת הזמנת השלמה לחוסרים</DialogTitle>
+          </DialogHeader>
+          {confirmShortages && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                תיווצר הזמנה אחת בפלייבוקס עם {confirmShortages.length} הפריטים הבאים:
+              </p>
+              <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
+                {confirmShortages.map((s, i) => (
+                  <div key={i} className="flex items-center justify-between gap-2 text-sm border border-border rounded-lg p-2.5 bg-white flex-wrap">
+                    <div>
+                      <p className="font-medium">{s.name}</p>
+                      <p className="text-xs text-muted-foreground">{s.warehouse}</p>
+                    </div>
+                    <span className="text-xs text-muted-foreground">× {s.quantity}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmShortages(null)} disabled={generatingOrders}>
+              ביטול
+            </Button>
+            <Button onClick={handleConfirmShortageOrders} disabled={generatingOrders}>
+              {generatingOrders ? (
+                <>
+                  <Loader2 className="w-4 h-4 ml-2 animate-spin" />
+                  יוצר...
+                </>
+              ) : (
+                "אשר וצור הזמנה"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <div className="relative">
+        <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="חיפוש פריט בכל המחסנים..."
+          className="pr-9 pl-9"
+        />
+        {isSearching && (
+          <button
+            onClick={() => setSearch("")}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            title="נקה חיפוש"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      <div className={cn("flex gap-1 bg-slate-100 rounded-lg p-1 transition-opacity", isSearching && "opacity-40 pointer-events-none")}>
         {WAREHOUSES.map((w) => (
           <button
             key={w}
@@ -256,8 +437,13 @@ export default function Equipment() {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-muted-foreground">
-            פריטים במחסן ({warehouseItems.length})
+            {isSearching ? `תוצאות חיפוש (${warehouseItems.length})` : `פריטים במחסן (${warehouseItems.length})`}
           </h2>
+          {!isSearching && FREE_TEXT_WAREHOUSES.includes(activeWarehouse) && (
+            <span className="text-xs text-muted-foreground ml-auto mr-2 hidden sm:inline">
+              מחסן פתוח — משיכה בכתיבה חופשית
+            </span>
+          )}
           {canAddItem && (
             <Button
               size="sm"
@@ -274,7 +460,7 @@ export default function Equipment() {
         </div>
         {warehouseItems.length === 0 ? (
           <div className="text-center py-10 text-muted-foreground border border-border rounded-xl bg-white">
-            <p className="text-sm">אין פריטים במחסן זה</p>
+            <p className="text-sm">{isSearching ? "לא נמצאו פריטים תואמים" : "אין פריטים במחסן זה"}</p>
           </div>
         ) : (
           <div className="space-y-2 max-h-[280px] overflow-y-auto pl-1">
@@ -284,9 +470,22 @@ export default function Equipment() {
                 className="flex items-center gap-3 bg-white border border-border rounded-lg p-3"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">כמות: {item.quantity}</p>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-sm font-medium">{item.name}</p>
+                    {isSearching && (
+                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">{item.warehouse}</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    כמות: {item.quantity}
+                    {Number(item.target_quantity) > 0 && ` · יעד: ${item.target_quantity}`}
+                  </p>
                 </div>
+                {Number(item.target_quantity) > 0 && Number(item.quantity) < Number(item.target_quantity) && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                    חסר {Number(item.target_quantity) - Number(item.quantity)}
+                  </span>
+                )}
                 {item.returnable && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
                     להחזרה
@@ -325,14 +524,21 @@ export default function Equipment() {
         open={itemFormOpen}
         onClose={() => setItemFormOpen(false)}
         onSubmit={handleItemSubmit}
-        warehouse={activeWarehouse}
+        // Editing an item found via the cross-warehouse search above must
+        // keep ITS OWN warehouse, not whichever tab happens to be active —
+        // WarehouseItemForm always saves with whatever `warehouse` it's
+        // given (see that file), so without this an edit from a search
+        // result would silently move the item to the active tab's
+        // warehouse.
+        warehouse={editingItem ? editingItem.warehouse : activeWarehouse}
         editingItem={editingItem}
+        canSetTarget={canSetTargets}
       />
       <WithdrawalForm
         open={withdrawalOpen}
         onClose={() => setWithdrawalOpen(false)}
-        warehouse={activeWarehouse}
-        items={warehouseItems}
+        allItems={items}
+        defaultWarehouse={activeWarehouse}
         userPluga={effectivePluga}
         onDone={loadData}
       />

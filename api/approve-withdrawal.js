@@ -1,7 +1,27 @@
 import { getSupabaseAdmin, getCallerProfile } from './_lib/supabaseAdmin.js';
 
-// Admin or equipment_manager only. Mirrors
-// base44/functions/approveWithdrawal/entry.ts.
+// Who may approve — the same people Equipment.jsx's canEdit shows the
+// approve/reject buttons to: an admin, a holder of the equipment_manager
+// permission (user_permissions — or the legacy profiles.equipment_manager
+// column it replaced, see migration 0011), or the "קלף אחראי" picked in
+// equipment_settings. This used to check only admin + the legacy column, so
+// anyone granted the permission after migration 0011 got a 403.
+async function canApprove(supabase, caller) {
+  if (caller.profile?.role === 'admin' || caller.profile?.equipment_manager) return true;
+  const { data: perms } = await supabase
+    .from('user_permissions')
+    .select('id')
+    .eq('user_id', caller.user.id)
+    .eq('permission', 'equipment_manager')
+    .limit(1);
+  if (perms?.length) return true;
+  const { data: settings } = await supabase
+    .from('equipment_settings')
+    .select('responsible_klaf_id')
+    .eq('responsible_klaf_id', caller.user.id)
+    .limit(1);
+  return !!settings?.length;
+}
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -9,7 +29,7 @@ export default async function handler(req, res) {
     const supabase = getSupabaseAdmin();
     const caller = await getCallerProfile(req, supabase);
     if (!caller) return res.status(401).json({ error: 'Unauthorized' });
-    if (caller.profile?.role !== 'admin' && !caller.profile?.equipment_manager) {
+    if (!(await canApprove(supabase, caller))) {
       return res.status(403).json({ error: 'אין הרשאה לאשר בקשות' });
     }
 
@@ -49,7 +69,12 @@ export default async function handler(req, res) {
       .eq('warehouse', warehouse);
     if (wiErr) throw wiErr;
 
-    for (const item of items) {
+    // Free-text items (`custom: true`, only allowed in מחסן קרביץ / מחסן
+    // קליר — see process-withdrawal.js) aren't in the inventory, so there's
+    // no stock to check or deduct for them.
+    const trackedItems = items.filter((i) => !i.custom);
+
+    for (const item of trackedItems) {
       const wi = warehouseItems.find((w) => w.name === item.name);
       if (!wi) return res.status(400).json({ error: `פריט "${item.name}" לא נמצא במחסן` });
       if (wi.quantity < item.quantity) {
@@ -59,7 +84,7 @@ export default async function handler(req, res) {
       }
     }
 
-    for (const item of items) {
+    for (const item of trackedItems) {
       const wi = warehouseItems.find((w) => w.name === item.name);
       const { error } = await supabase
         .from('warehouse_items')
@@ -79,6 +104,7 @@ export default async function handler(req, res) {
           held_by_name: withdrawal.requested_by_name,
           withdrawal_date: today,
           expected_return_date: expected_return_date || null,
+          untracked: !!i.custom,
         }))
       );
       if (error) throw error;
