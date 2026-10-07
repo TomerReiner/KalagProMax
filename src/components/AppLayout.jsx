@@ -6,7 +6,6 @@ import AdminPanel from "./AdminPanel";
 import NotificationsBell from "./NotificationsBell";
 import PushAutoSubscribe from "./PushAutoSubscribe";
 import { usePreviewRole } from "@/lib/previewRoleContext";
-import { plugotFor, effectivePermissions } from "@/lib/permissions";
 import { PAGE_TITLES } from "@/lib/pageTitles";
 import { PageTitleProvider, usePageTitleValue } from "@/lib/pageTitleContext";
 
@@ -15,13 +14,10 @@ const CHARACTER_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a15
 const WATERMARK_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/97bf84ed7_image.png";
 const HEADER_IMAGE_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/a3148ebb9_image.png";
 
-// Role-based page allowlist. Delegated permissions (src/lib/permissions.js)
-// can widen this for a specific signed-in user regardless of role — see the
-// logic below, which adds "/klaf" for a non-קלפ meal_regulators holder
-// (קלפ's own meal_regulators grant doesn't need to — every
-// קלפ already has it by role, and a non-קלפ delegated holder now reaches the
-// same isDelegatedOnly view through "אזור אישי" instead of a top-nav icon,
-// see src/pages/PersonalArea.jsx / src/components/TopNav.jsx).
+// Role-based page allowlist.
+// "/meal-regulators" (src/pages/MealRegulators.jsx) is open to every role:
+// everyone can see the day's filled-in regulators, and what each person can
+// EDIT there is decided on the page itself (src/lib/mealRegulators.js).
 // "/daily-summary" (tab label "שוטף" — see src/pages/DailySummary.jsx)
 // is reachable by every role: the שוטף half is still edit-gated by the
 // shotaf_schedule permission, but anyone can view it and everyone can edit
@@ -37,10 +33,10 @@ const HEADER_IMAGE_URL = "https://media.base44.com/images/public/6aa1c4c872f2848
 // "/playbox" is open to every role: anyone can create/edit an order, and
 // only approval/status changes are gated (see src/pages/Playbox.jsx).
 const ROLE_PAGES = {
-  admin: ["/", "/daily-summary", "/constraints", "/tasks", "/statistics", "/equipment", "/playbox", "/personal"],
-  קלפ: ["/", "/daily-summary", "/constraints", "/klaf", "/equipment", "/playbox", "/personal"],
-  רסר: ["/", "/daily-summary", "/constraints", "/statistics", "/playbox", "/personal"],
-  סגל: ["/", "/daily-summary", "/constraints", "/statistics", "/playbox", "/personal"],
+  admin: ["/", "/daily-summary", "/constraints", "/tasks", "/statistics", "/equipment", "/playbox", "/meal-regulators", "/personal"],
+  קלפ: ["/", "/daily-summary", "/constraints", "/klaf", "/equipment", "/playbox", "/meal-regulators", "/personal"],
+  רסר: ["/", "/daily-summary", "/constraints", "/statistics", "/playbox", "/meal-regulators", "/personal"],
+  סגל: ["/", "/daily-summary", "/constraints", "/statistics", "/playbox", "/meal-regulators", "/personal"],
 };
 
 const ROLE_DEFAULT_PAGE = {
@@ -68,7 +64,6 @@ function AppLayoutInner() {
   const location = useLocation();
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
-  const [myPermissions, setMyPermissions] = useState([]);
   const { previewRole } = usePreviewRole();
   // Fires the "land on my role's real default tab" redirect (see the effect
   // below) exactly once per mount, i.e. once per full page load/login — not
@@ -82,23 +77,9 @@ function AppLayoutInner() {
   }, []);
 
   useEffect(() => {
-    if (!user?.id) { setMyPermissions([]); return; }
-    base44.entities.UserPermission.filter({ user_id: user.id }).then(setMyPermissions).catch(() => setMyPermissions([]));
-  }, [user?.id]);
-
-  useEffect(() => {
     if (!user) return;
     const effectiveRole = previewRole || user.role;
     const allowed = [...(ROLE_PAGES[effectiveRole] || [])];
-    // Previewing as another role should widen route access exactly the way
-    // that role actually would (e.g. a רסר previewer should only reach
-    // /klaf if that role's own grants would allow it) —
-    // so this passes effectiveRole (previewRole when previewing, else the
-    // real role), not always the real role. See the long comment on
-    // effectivePermissions in src/lib/permissions.js for why this used to be
-    // "user.role" unconditionally and why that was wrong for a true preview.
-    const delegatedPermissions = effectivePermissions(myPermissions, effectiveRole);
-    if (plugotFor(delegatedPermissions, "meal_regulators").length > 0 && !allowed.includes("/klaf")) allowed.push("/klaf");
 
     // Land on this role's real default tab once, right after login — "/" is
     // itself an allowed page for every role (see ROLE_PAGES above), so
@@ -118,7 +99,7 @@ function AppLayoutInner() {
     if (!allowed.includes(location.pathname)) {
       navigate(ROLE_DEFAULT_PAGE[effectiveRole] || "/", { replace: true });
     }
-  }, [user, location.pathname, previewRole, myPermissions]);
+  }, [user, location.pathname, previewRole]);
 
   // A page can override its route's default title (see
   // src/lib/pageTitleContext.jsx) — e.g. /klaf shows "המשימות שלי" by

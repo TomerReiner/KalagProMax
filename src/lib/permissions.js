@@ -56,6 +56,18 @@ export const PERMISSIONS = {
     description: "לערוך את רשימת המווסתים לצהריים/ערב עבור הפלוגות שנבחרו",
     scoped: true,
   },
+  // "אחראי מווסתים" — org-wide owner of the whole מווסתים page
+  // (src/pages/MealRegulators.jsx): edits every pluga's regulators/entry
+  // times, and assigns a pluga's קלפ to fill in their own pluga for a given
+  // day (a direct_tasks row with kind = 'meal_regulators', see
+  // src/lib/mealRegulators.js) — that assignment is what lets a plain קלפ
+  // edit their pluga's regulators for that day.
+  meal_regulators_manager: {
+    key: "meal_regulators_manager",
+    label: "אחראי מווסתים",
+    description: "לנהל את כל דף המווסתים: למלא בעצמו לכל הפלוגות, ולבקש מקל\"פים למלא את הפלוגה שלהם (מופיע אצלם כמשימה)",
+    scoped: false,
+  },
   equipment_manager: {
     key: "equipment_manager",
     label: "אחראי משיכות ציוד",
