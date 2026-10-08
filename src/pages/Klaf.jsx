@@ -19,6 +19,7 @@ import KlafPlugaEquipment from "@/components/klaf/KlafPlugaEquipment";
 import EventChecklist from "@/components/constraints/EventChecklist";
 import { toggleItem } from "@/lib/eventChecklist";
 import { MEAL_TASK_KIND } from "@/lib/mealRegulators";
+import { dayScheduleBlocks } from "@/lib/battalion";
 
 const WEEKDAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 
@@ -97,6 +98,10 @@ export default function Klaf() {
   const [events, setEvents] = useState([]);
   const [directTasks, setDirectTasks] = useState([]);
   const [constraints, setConstraints] = useState([]);
+  // The whole battalion's day for "לוז יומי" (same as the constraints
+  // calendar): every constraint, plus recurring events and their overrides.
+  const [allConstraints, setAllConstraints] = useState([]);
+  const [recurringData, setRecurringData] = useState({ recurring: [], overrides: [] });
   const [eventConfirmations, setEventConfirmations] = useState([]);
   const [eventContacts, setEventContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -150,6 +155,12 @@ export default function Klaf() {
         (dt.responsible_plugas && dt.responsible_plugas.includes(effectivePluga))
       ));
       setConstraints(constraintData.filter((c) => c.pluga === effectivePluga || c.plugas?.includes(effectivePluga)));
+      setAllConstraints(constraintData);
+      const [recurring, overrides] = await Promise.all([
+        base44.entities.RecurringEvent.list("-created_date", 300).catch(() => []),
+        base44.entities.RecurringOverride.list("-created_date", 500).catch(() => []),
+      ]);
+      setRecurringData({ recurring, overrides });
       // Only today's events matter here; the confirmation feature is scoped
       // to the selected day like the rest of this page.
       const todaysEventIds = new Set(eventData.map((e) => e.id));
@@ -289,31 +300,14 @@ export default function Klaf() {
 
   // Build schedule items (only tasks with times) for the selected day only —
   // unaffected by the task-list decoupling above.
-  const scheduleItems = [];
-  events.forEach((e) => {
-    if (e.event_type === "פנימי" && e.responsible_plugas?.includes(pluga)) {
-      scheduleItems.push({ title: e.title, start_time: e.start_time, end_time: e.end_time, type: "event" });
-    }
-    if (e.event_type === "חיצוני") {
-      if (e.transport_pluga === pluga) {
-        scheduleItems.push({ title: `${e.title} - הסעים`, start_time: e.start_time, end_time: e.end_time, type: "event" });
-      }
-      if (e.food_pluga === pluga) {
-        scheduleItems.push({ title: `${e.title} - אוכל`, start_time: e.start_time, end_time: e.end_time, type: "event" });
-      }
-    }
+  // "לוז יומי" = exactly what the constraints calendar shows for this day.
+  const scheduleBlocks = dayScheduleBlocks(selectedDate, {
+    constraints: allConstraints,
+    events,
+    recurring: recurringData.recurring,
+    overrides: recurringData.overrides,
+    routine,
   });
-  directTasks.forEach((dt) => {
-    if (dt.start_time) {
-      scheduleItems.push({ title: dt.title, start_time: dt.start_time, end_time: dt.end_time, type: "direct" });
-    }
-  });
-  // Constraints go on the same timeline as tasks (request: connect the day's
-  // schedule to that day's constraints instead of showing them separately).
-  constraints.forEach((c) => {
-    scheduleItems.push({ title: c.title, start_time: c.start_time, end_time: c.end_time, type: "constraint", details: c.details });
-  });
-  scheduleItems.sort((a, b) => (a.start_time || "").localeCompare(b.start_time || ""));
 
   const isCompleted = (task, taskDateStr) => {
     return weekCompletions.some((c) => c.task_id === task.id && c.task_field === task.field && c.task_date === taskDateStr);
@@ -623,20 +617,14 @@ export default function Klaf() {
             </button>
           </div>
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-semibold text-muted-foreground">לוז יומי</h2>
-            {constraints.length > 0 && (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-red-100 border-2 border-dashed border-red-400" />
-                אילוץ
-              </span>
-            )}
+            <h2 className="text-sm font-semibold text-muted-foreground">לוז יומי — כמו בלוח האילוצים</h2>
           </div>
           {loading ? (
             <div className="flex justify-center py-10">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <KlafSchedule items={scheduleItems} pluga={pluga} />
+            <KlafSchedule blocks={scheduleBlocks} pluga={pluga} dateStr={dateStr} />
           )}
         </div>
       </div>
@@ -651,7 +639,7 @@ export default function Klaf() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-2">
         <KlafConstraints pluga={pluga} dateStr={dateStr} onChange={loadData} />
-        <KlafSummary dateStr={dateStr} />
+        <KlafSummary dateStr={dateStr} pluga={pluga} />
       </div>
 
       {/* Read-only: every pluga whose regulators were filled in for the

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Trash2, ClipboardList, FileText, Copy, Pencil, CalendarDays } from "lucide-react";
+import { Loader2, Plus, Trash2, ClipboardList, FileText, Pencil, CalendarDays } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -14,27 +14,8 @@ import { cn } from "@/lib/utils";
 import { usePreviewRole } from "@/lib/previewRoleContext";
 import { hasPermission, effectivePermissions } from "@/lib/permissions";
 import ShotafPanel from "@/components/dailysummary/ShotafPanel";
-
-function parseEntries(entries) {
-  if (!entries) return [];
-  if (Array.isArray(entries)) return entries;
-  if (typeof entries === "string") {
-    try { return JSON.parse(entries); } catch { return []; }
-  }
-  return [];
-}
-
-// An entry's areas — either the current `areas` array (several גזרות under
-// one responsible pluga) or, for an entry saved before that existed, the
-// old singular `area` string wrapped in a one-item array. Kept in sync
-// manually with the identical helper in src/components/klaf/KlafSummary.jsx
-// (same DailySummary entity/entries shape, two separate screens onto it —
-// see that file for why there's no shared module for it yet).
-function entryAreas(e) {
-  if (Array.isArray(e.areas)) return e.areas;
-  if (e.area) return [e.area];
-  return [];
-}
+import SummaryCopyMenu from "@/components/dailysummary/SummaryCopyMenu";
+import { entryAreas, groupByDate, saveDaySummary } from "@/lib/dailySummary";
 
 // "סיכום מסדר" + "שוטף" merged into one tabbed page (feature request).
 // סיכום מסדר stays fully open — anyone who can reach this tab can create
@@ -46,10 +27,8 @@ export default function DailySummaryPage() {
   const [summaries, setSummaries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [builderOpen, setBuilderOpen] = useState(false);
-  // Whether the open builder dialog is editing an existing summary
-  // (pre-filled from it, saved via update()) or starting a fresh one (saved
-  // via create()) — feature request: "לאפשר לעדכן סיכומי מסדר". Previously
-  // a summary could only ever be created, never revisited.
+  // The day being edited — { date, rows, entries } from groupByDate (all
+  // same-day rows merged into one summary), or null for a new day.
   const [editingSummary, setEditingSummary] = useState(null);
   const [entries, setEntries] = useState([]);
   const [newAreas, setNewAreas] = useState([]);
@@ -60,7 +39,7 @@ export default function DailySummaryPage() {
 
   const [user, setUser] = useState(null);
   const [myPermissions, setMyPermissions] = useState([]);
-  const { previewRole } = usePreviewRole();
+  const { previewRole, previewPluga } = usePreviewRole();
   // ?tab=shotaf[&date=YYYY-MM-DD] — links from "המשימות שלי" / "משימות"
   // land directly on the שוטף tab (on that task's day) instead of the
   // default סיכום מסדר tab.
@@ -86,24 +65,10 @@ export default function DailySummaryPage() {
   // member of that role, not always the real signed-in admin's full access).
   const delegatedPermissions = effectivePermissions(myPermissions, effectiveRole);
   const canEditShotaf = effectiveRole === "admin" || hasPermission(delegatedPermissions, "shotaf_schedule");
-
-  const handleCopy = async (summary) => {
-    const parsed = parseEntries(summary.entries);
-    const dateStr = formatHebrewDate(summary.summary_date);
-    let text = `סיכום מסדר - ${dateStr}\n\n`;
-    parsed.forEach((e) => {
-      const header = entryAreas(e).join(", ") + (e.pluga ? ` (${e.pluga})` : "");
-      text += `${header}:\n`;
-      if (e.notes) text += `${e.notes}\n`;
-      text += `\n`;
-    });
-    try {
-      await navigator.clipboard.writeText(text);
-      toast({ title: "הועתק ללוח", duration: 2000 });
-    } catch (err) {
-      toast({ title: "שגיאה בהעתקה", variant: "destructive" });
-    }
-  };
+  // The viewer's own pluga — gets a one-tap "העתק את החלק של X" button.
+  const myPluga = effectiveRole === "קלפ" ? (previewRole === "קלפ" ? previewPluga : user?.pluga) : null;
+  // One card per day, even if several rows exist for the same date.
+  const days = groupByDate(summaries);
 
   const loadSummaries = useCallback(async () => {
     try {
@@ -134,15 +99,22 @@ export default function DailySummaryPage() {
     setEntries(entries.filter((_, i) => i !== idx));
   };
 
+  // "סיכום חדש" when today already has a summary continues that same
+  // summary (adds to it) instead of starting a second one for the day.
   const openCreate = () => {
+    const todayGroup = days.find((d) => d.date === toDateStr(new Date()));
+    if (todayGroup) {
+      openEdit(todayGroup);
+      return;
+    }
     setEditingSummary(null);
     setEntries([]);
     setBuilderOpen(true);
   };
 
-  const openEdit = (summary) => {
-    setEditingSummary(summary);
-    setEntries(parseEntries(summary.entries));
+  const openEdit = (day) => {
+    setEditingSummary(day);
+    setEntries(day.entries);
     setBuilderOpen(true);
   };
 
@@ -150,13 +122,15 @@ export default function DailySummaryPage() {
     if (entries.length === 0) return;
     setSaving(true);
     try {
+      // Saves the day as ONE row (merging any split rows of that date).
       if (editingSummary) {
-        await base44.entities.DailySummary.update(editingSummary.id, { entries });
+        await saveDaySummary(editingSummary.date, editingSummary.rows, entries);
       } else {
-        await base44.entities.DailySummary.create({
-          summary_date: toDateStr(new Date()),
-          entries: entries,
-        });
+        // New day: re-read first, in case someone created today's summary
+        // meanwhile — then append to it instead of creating a second one.
+        const today = toDateStr(new Date());
+        const fresh = groupByDate(await base44.entities.DailySummary.filter({ summary_date: today }))[0];
+        await saveDaySummary(today, fresh?.rows, [...(fresh?.entries || []), ...entries]);
       }
       setEntries([]);
       setEditingSummary(null);
@@ -195,7 +169,7 @@ export default function DailySummaryPage() {
           <div className="flex justify-end">
             <Button onClick={openCreate} className="gap-2">
               <Plus className="w-4 h-4" />
-              סיכום חדש
+              {days.some((d) => d.date === toDateStr(new Date())) ? "הוסף לסיכום של היום" : "סיכום חדש"}
             </Button>
           </div>
 
@@ -203,31 +177,28 @@ export default function DailySummaryPage() {
             <div className="flex justify-center py-20">
               <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
             </div>
-          ) : summaries.length === 0 ? (
+          ) : days.length === 0 ? (
             <div className="text-center py-20 text-muted-foreground">
               <p className="text-lg font-medium">אין סיכומי מסדר</p>
               <p className="text-sm mt-1">לחץ "סיכום חדש" ליצירת סיכום.</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {summaries.map((s) => {
-                const parsed = parseEntries(s.entries);
+              {days.map((day) => {
+                const parsed = day.entries;
                 return (
-                  <div key={s.id} className="bg-white rounded-xl border border-border p-5">
-                    <div className="flex items-center justify-between gap-2 mb-3">
+                  <div key={day.date} className="bg-white rounded-xl border border-border p-5">
+                    <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                       <div className="flex items-center gap-2">
                         <FileText className="w-4 h-4 text-muted-foreground" />
-                        <h2 className="text-base font-semibold">{formatHebrewDate(s.summary_date)}</h2>
+                        <h2 className="text-base font-semibold">{formatHebrewDate(day.date)}</h2>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <Button size="sm" variant="outline" onClick={() => openEdit(s)} className="gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Button size="sm" variant="outline" onClick={() => openEdit(day)} className="gap-1.5">
                           <Pencil className="w-3.5 h-3.5" />
                           ערוך
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => handleCopy(s)} className="gap-1.5">
-                          <Copy className="w-3.5 h-3.5" />
-                          העתק
-                        </Button>
+                        <SummaryCopyMenu date={day.date} entries={parsed} myPluga={myPluga} />
                       </div>
                     </div>
                     <div className="space-y-2">
@@ -261,7 +232,7 @@ export default function DailySummaryPage() {
         <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle>
-              {editingSummary ? `עריכת סיכום מסדר - ${formatHebrewDate(editingSummary.summary_date)}` : `סיכום מסדר - ${formatHebrewDate(toDateStr(new Date()))}`}
+              {editingSummary ? `עריכת סיכום מסדר - ${formatHebrewDate(editingSummary.date)}` : `סיכום מסדר - ${formatHebrewDate(toDateStr(new Date()))}`}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">

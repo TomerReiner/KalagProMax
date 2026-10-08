@@ -217,3 +217,30 @@ export function buildDailyBrief({ date, routine, events = [], recurring = [], di
   if (lines.length === 1) lines.push("", "אין פעילות מתוכננת ליום הזה.");
   return lines.join("\n");
 }
+
+// ---------------------------------------------------------------------------
+// One day exactly as the constraints calendar shows it (src/pages/
+// Constraints.jsx): every constraint, event, recurring event and שוטף duty
+// of the whole battalion that day — used by the Klaf page's "לוז יומי" so
+// both screens show the same schedule. `involves(pluga)` marks what touches
+// a given pluga.
+// ---------------------------------------------------------------------------
+export function dayScheduleBlocks(date, { constraints = [], events = [], recurring = [], overrides = [], routine = null }) {
+  const ds = toDateStr(date);
+  const blocks = [];
+  constraints.filter((c) => dateOnly(c.constraint_date) === ds).forEach((c) => {
+    const plugot = constraintPlugot(c);
+    blocks.push({ key: `c-${c.id}`, type: "constraint", title: c.title, subtitle: plugot.join(", "), start: c.start_time, end: c.end_time, plugot, details: c.details });
+  });
+  events.filter((e) => dateOnly(e.event_date) === ds).forEach((e) => {
+    const roles = eventRoles(e);
+    blocks.push({ key: `e-${e.id}`, type: "event", title: e.title, subtitle: e.event_type, start: e.start_time, end: e.end_time, plugot: roles.map((r) => r.pluga).filter(Boolean), eventId: e.id, details: e.details });
+  });
+  recurringForDate(date, recurring, overrides).forEach((r) => {
+    blocks.push({ key: `r-${r.id}`, type: "recurring", title: r.title, subtitle: "קבוע", start: r.start_time, end: r.end_time, plugot: r.pluga ? [r.pluga] : [], details: r.details });
+  });
+  shotafSlotsForDay(routine, date).forEach((s) => {
+    blocks.push({ key: `s-${s.field}`, type: "shotaf", title: s.label, subtitle: "שוטף", start: s.time.start, end: s.time.end, plugot: s.plugot });
+  });
+  return blocks.sort((a, b) => (a.start || "").localeCompare(b.start || ""));
+}

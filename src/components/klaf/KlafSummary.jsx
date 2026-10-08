@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Trash2, Copy, FileText, Pencil } from "lucide-react";
+import { Loader2, Plus, Trash2, FileText, Pencil } from "lucide-react";
+import SummaryCopyMenu from "@/components/dailysummary/SummaryCopyMenu";
+import { entryAreas, groupByDate, saveDaySummary } from "@/lib/dailySummary";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,25 +12,11 @@ import { useToast } from "@/components/ui/use-toast";
 import { LOCATIONS, PLUGOT, PLUGA_COLORS, formatHebrewDate } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
-function parseEntries(entries) {
-  if (!entries) return [];
-  if (Array.isArray(entries)) return entries;
-  if (typeof entries === "string") {
-    try { return JSON.parse(entries); } catch { return []; }
-  }
-  return [];
-}
-
-// See the identical helper in src/pages/DailySummary.jsx — same
-// DailySummary entity/entries shape, two separate screens onto it, kept in
-// sync manually since there's no shared UI-utility module yet.
-function entryAreas(e) {
-  if (Array.isArray(e.areas)) return e.areas;
-  if (e.area) return [e.area];
-  return [];
-}
-
-export default function KlafSummary({ dateStr }) {
+// One day = one summary: same-day rows are shown merged and saved back as a
+// single row (see src/lib/dailySummary.js). `pluga` = the viewer's pluga,
+// which gets a one-tap "העתק את החלק של X" button.
+export default function KlafSummary({ dateStr, pluga }) {
+  // { date, rows, entries } for dateStr, or null.
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -50,7 +38,7 @@ export default function KlafSummary({ dateStr }) {
     setLoading(true);
     try {
       const data = await base44.entities.DailySummary.filter({ summary_date: dateStr });
-      setSummary(data[0] || null);
+      setSummary(groupByDate(data)[0] || null);
     } finally {
       setLoading(false);
     }
@@ -59,24 +47,6 @@ export default function KlafSummary({ dateStr }) {
   useEffect(() => {
     loadSummary();
   }, [loadSummary]);
-
-  const handleCopy = async () => {
-    if (!summary) return;
-    const parsed = parseEntries(summary.entries);
-    let text = `סיכום מסדר - ${formatHebrewDate(summary.summary_date)}\n\n`;
-    parsed.forEach((e) => {
-      const header = entryAreas(e).join(", ") + (e.pluga ? ` (${e.pluga})` : "");
-      text += `${header}:\n`;
-      if (e.notes) text += `${e.notes}\n`;
-      text += `\n`;
-    });
-    try {
-      await navigator.clipboard.writeText(text);
-      toast({ title: "הועתק ללוח", duration: 2000 });
-    } catch {
-      toast({ title: "שגיאה בהעתקה", variant: "destructive" });
-    }
-  };
 
   const toggleArea = (area) => {
     setNewAreas((prev) => (prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area]));
@@ -99,7 +69,7 @@ export default function KlafSummary({ dateStr }) {
   const openEdit = () => {
     if (!summary) return;
     setEditing(true);
-    setEntries(parseEntries(summary.entries));
+    setEntries(summary.entries);
     setBuilderOpen(true);
   };
 
@@ -107,14 +77,11 @@ export default function KlafSummary({ dateStr }) {
     if (entries.length === 0) return;
     setSaving(true);
     try {
-      if (editing && summary) {
-        await base44.entities.DailySummary.update(summary.id, { entries });
-      } else {
-        await base44.entities.DailySummary.create({
-          summary_date: dateStr,
-          entries,
-        });
-      }
+      // Re-read the day first so a summary someone else created meanwhile
+      // is merged into, not duplicated.
+      const fresh = groupByDate(await base44.entities.DailySummary.filter({ summary_date: dateStr }))[0];
+      const merged = editing ? entries : [...(fresh?.entries || []), ...entries];
+      await saveDaySummary(dateStr, fresh?.rows, merged);
       setEntries([]);
       setBuilderOpen(false);
       await loadSummary();
@@ -123,7 +90,7 @@ export default function KlafSummary({ dateStr }) {
     }
   };
 
-  const parsed = summary ? parseEntries(summary.entries) : [];
+  const parsed = summary ? summary.entries : [];
 
   return (
     <div className="bg-white rounded-xl border border-border p-4 space-y-3">
@@ -138,10 +105,7 @@ export default function KlafSummary({ dateStr }) {
               <Pencil className="w-3.5 h-3.5" />
               ערוך
             </Button>
-            <Button size="sm" variant="outline" onClick={handleCopy} className="gap-1">
-              <Copy className="w-3.5 h-3.5" />
-              העתק
-            </Button>
+            <SummaryCopyMenu date={dateStr} entries={parsed} myPluga={pluga} />
           </div>
         )}
       </div>
