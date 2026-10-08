@@ -1,7 +1,7 @@
 import React from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2, MapPin, Building2, Clock, CalendarPlus } from "lucide-react";
+import { Pencil, Trash2, MapPin, Clock, CalendarPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PLUGA_COLORS } from "@/lib/constants";
 import AttachmentGallery from "@/components/gaps/AttachmentGallery";

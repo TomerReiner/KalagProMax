@@ -98,11 +98,27 @@ export function buildFixtures() {
     // D0 (today): internal, single pluga
     { id: "10000000-0000-4000-8000-000000000001", event_type: "פנימי", event_date: dateStr(D0), start_time: "09:00", end_time: "10:00", title: "מסדר פנימי - פארן בלבד", details: null, transport_pluga: null, transport_details: null, food_pluga: null, food_details: null, responsible_plugas: ["פארן"], reminder_offset_minutes: null, ...stamp },
     // D0 (today): internal, multiple plugot
-    { id: "10000000-0000-4000-8000-000000000002", event_type: "פנימי", event_date: dateStr(D0), start_time: "11:00", end_time: "12:00", title: "פעילות פנימית - כמה פלוגות", details: null, transport_pluga: null, transport_details: null, food_pluga: null, food_details: null, responsible_plugas: ["בשור", "צין"], reminder_offset_minutes: null, ...stamp },
+    { id: "10000000-0000-4000-8000-000000000002", event_type: "פנימי", event_date: dateStr(D0), start_time: "11:00", end_time: "12:00", title: "פעילות פנימית - כמה פלוגות", details: null, transport_pluga: null, transport_details: null, food_pluga: null, food_details: null, responsible_plugas: ["בשור", "צין"], reminder_offset_minutes: null,
+      // Logistics checklist demo (events.checklist, migration 0021): items split between the two plugot, some done.
+      checklist: [
+        { id: "ck1", text: "שולחנות וכיסאות", pluga: "בשור", done: true, done_by: "דנה לוי", done_at: null },
+        { id: "ck2", text: "כיבוד ושתייה", pluga: "בשור", done: false, done_by: null, done_at: null },
+        { id: "ck3", text: "ציוד הגברה", pluga: "צין", done: false, done_by: null, done_at: null },
+        { id: "ck4", text: "ניקיון אחרי האירוע", pluga: "צין", done: false, done_by: null, done_at: null },
+      ],
+      ...stamp },
     // D1 (tomorrow): internal, NOT assigned yet — shows in "משימות לשיבוץ"
     { id: "10000000-0000-4000-8000-000000000003", event_type: "פנימי", event_date: dateStr(D1), start_time: "10:00", end_time: "11:00", title: "אירוע פנימי טרם שובץ", details: null, transport_pluga: null, transport_details: null, food_pluga: null, food_details: null, responsible_plugas: [], reminder_offset_minutes: null, ...stamp },
     // D3: external, transport+food assigned to different plugot (overlaps a constraint below)
-    { id: "10000000-0000-4000-8000-000000000004", event_type: "חיצוני", event_date: dateStr(D3), start_time: "13:00", end_time: "16:00", title: "טיול שנתי", details: "לבדיקת חפיפה עם אילוץ", transport_pluga: "רמון", transport_details: "הסעה משוריינת - 3 אוטובוסים", food_pluga: "תמר", food_details: "ארוחת צהריים בשטח", responsible_plugas: null, reminder_offset_minutes: null, ...stamp },
+    { id: "10000000-0000-4000-8000-000000000004", event_type: "חיצוני", event_date: dateStr(D3), start_time: "13:00", end_time: "16:00", title: "טיול שנתי", details: "לבדיקת חפיפה עם אילוץ", transport_pluga: "רמון", transport_details: "הסעה משוריינת - 3 אוטובוסים", food_pluga: "תמר", food_details: "ארוחת צהריים בשטח", responsible_plugas: null, reminder_offset_minutes: null,
+      checklist: [
+        { id: "ct1", text: "אוטובוסים ואישור תנועה", pluga: "רמון", done: true, done_by: "שירה דוד", done_at: null },
+        { id: "ct2", text: "קשר עם הנהג", pluga: "רמון", done: false, done_by: null, done_at: null },
+        { id: "ct3", text: "מנות / ארוחות לשטח", pluga: "תמר", done: false, done_by: null, done_at: null },
+        { id: "ct4", text: "מים — ג'ריקנים", pluga: "תמר", done: false, done_by: null, done_at: null },
+        { id: "ct5", text: "ערכת עזרה ראשונה וחובש", pluga: null, done: false, done_by: null, done_at: null },
+      ],
+      ...stamp },
     // D3: external, only transport assigned, food "טרם הוחלט"
     { id: "10000000-0000-4000-8000-000000000005", event_type: "חיצוני", event_date: dateStr(D3), start_time: "17:00", end_time: "19:00", title: "אירוע ערב - אוכל טרם שובץ", details: null, transport_pluga: "פארן", transport_details: null, food_pluga: null, food_details: null, responsible_plugas: null, reminder_offset_minutes: null, ...stamp },
     // D6: internal, assigned to פארן (completion below)
@@ -280,13 +296,13 @@ export function buildFixtures() {
   // ---------------------------------------------------------------------
   const profiles = [
     { id: "00000000-0000-4000-8000-000000000000", email: "test-admin@local.test", full_name: "מנהל מצב בדיקה", role: "admin", pluga: null, equipment_manager: false, notifications_last_read: null, ...stamp },
-    { id: "e0000000-0000-4000-8000-000000000001", email: "roi.cohen@local.test", full_name: "רועי כהן", role: "קלפ", pluga: "פארן", equipment_manager: false, notifications_last_read: null, ...stamp },
-    { id: "e0000000-0000-4000-8000-000000000002", email: "dana.levi@local.test", full_name: "דנה לוי", role: "קלפ", pluga: "בשור", equipment_manager: false, notifications_last_read: null, ...stamp },
-    { id: "e0000000-0000-4000-8000-000000000003", email: "omer.mizrahi@local.test", full_name: "עומר מזרחי", role: "קלפ", pluga: "צין", equipment_manager: true, notifications_last_read: null, ...stamp },
-    { id: "e0000000-0000-4000-8000-000000000004", email: "shira.david@local.test", full_name: "שירה דוד", role: "קלפ", pluga: "רמון", equipment_manager: false, notifications_last_read: null, ...stamp },
-    { id: "e0000000-0000-4000-8000-000000000005", email: "itai.peretz@local.test", full_name: "איתי פרץ", role: "קלפ", pluga: "תמר", equipment_manager: false, notifications_last_read: null, ...stamp },
-    { id: "e0000000-0000-4000-8000-000000000006", email: "noa.avraham@local.test", full_name: "נועה אברהם", role: "רסר", pluga: null, equipment_manager: false, notifications_last_read: null, ...stamp },
-    { id: "e0000000-0000-4000-8000-000000000007", email: "yuval.shimon@local.test", full_name: "יובל שמעון", role: "סגל", pluga: null, equipment_manager: false, notifications_last_read: null, ...stamp },
+    { id: "e0000000-0000-4000-8000-000000000001", email: "roi.cohen@local.test", full_name: "רועי כהן", role: "קלפ", pluga: "פארן", phone: "0521111111", equipment_manager: false, notifications_last_read: null, ...stamp },
+    { id: "e0000000-0000-4000-8000-000000000002", email: "dana.levi@local.test", full_name: "דנה לוי", role: "קלפ", pluga: "בשור", phone: "0522222222", equipment_manager: false, notifications_last_read: null, ...stamp },
+    { id: "e0000000-0000-4000-8000-000000000003", email: "omer.mizrahi@local.test", full_name: "עומר מזרחי", role: "קלפ", pluga: "צין", phone: "0523333333", equipment_manager: true, notifications_last_read: null, ...stamp },
+    { id: "e0000000-0000-4000-8000-000000000004", email: "shira.david@local.test", full_name: "שירה דוד", role: "קלפ", pluga: "רמון", phone: null, equipment_manager: false, notifications_last_read: null, ...stamp },
+    { id: "e0000000-0000-4000-8000-000000000005", email: "itai.peretz@local.test", full_name: "איתי פרץ", role: "קלפ", pluga: "תמר", phone: "0525555555", equipment_manager: false, notifications_last_read: null, ...stamp },
+    { id: "e0000000-0000-4000-8000-000000000006", email: "noa.avraham@local.test", full_name: "נועה אברהם", role: "רסר", pluga: null, phone: "0526666666", equipment_manager: false, notifications_last_read: null, ...stamp },
+    { id: "e0000000-0000-4000-8000-000000000007", email: "yuval.shimon@local.test", full_name: "יובל שמעון", role: "סגל", pluga: null, phone: "0527777777", equipment_manager: false, notifications_last_read: null, ...stamp },
   ];
 
   // ---------------------------------------------------------------------
@@ -314,6 +330,12 @@ export function buildFixtures() {
     { id: "80000000-0000-4000-8000-000000000009", user_id: "e0000000-0000-4000-8000-000000000005", permission: "meal_regulators", pluga: "תמר", ...stamp },
     // יובל שמעון (סגל): האחראי הכלל-ארגוני על הזמנות פלייבוקס.
     { id: "80000000-0000-4000-8000-000000000010", user_id: "e0000000-0000-4000-8000-000000000007", permission: "playbox_orders", pluga: null, ...stamp },
+    // שירה דוד (קלפ, רמון): אחראית המווסתים; עומר מזרחי (קלפ, צין): אחראי
+    // משיכות ציוד; נועה אברהם (רס"ר): עורכת השוטף — כדי ש"ספר קשר" יראה
+    // "מי אחראי על מה" עם אנשים אמיתיים.
+    { id: "80000000-0000-4000-8000-000000000011", user_id: "e0000000-0000-4000-8000-000000000004", permission: "meal_regulators_manager", pluga: null, ...stamp },
+    { id: "80000000-0000-4000-8000-000000000012", user_id: "e0000000-0000-4000-8000-000000000003", permission: "equipment_manager", pluga: null, ...stamp },
+    { id: "80000000-0000-4000-8000-000000000013", user_id: "e0000000-0000-4000-8000-000000000006", permission: "shotaf_schedule", pluga: null, ...stamp },
   ];
 
   // pluga is null on every order below (see

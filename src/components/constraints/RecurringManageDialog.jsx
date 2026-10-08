@@ -2,10 +2,8 @@ import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Loader2, Trash2, Plus, Repeat, CalendarClock } from "lucide-react";
-import { PLUGA_COLORS, toDateStr } from "@/lib/constants";
+import { PLUGA_COLORS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import RecurringEventForm from "@/components/constraints/RecurringEventForm";
 

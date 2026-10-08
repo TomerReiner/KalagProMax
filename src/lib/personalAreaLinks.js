@@ -5,7 +5,7 @@
 // instead of drifting apart the way some other duplicated screens in this
 // app have (e.g. src/pages/DailySummary.jsx vs
 // src/components/klaf/KlafSummary.jsx's entryAreas() helper).
-import { Package, Truck, UtensilsCrossed } from "lucide-react";
+import { Package, Truck, UtensilsCrossed, BookUser, LifeBuoy } from "lucide-react";
 import { hasAnyPermission, plugotFor } from "./permissions";
 
 // `effectiveRole`/`delegatedPermissions` should already be previewRole-aware
@@ -46,6 +46,20 @@ export function getPersonalAreaLinks({ effectiveRole, delegatedPermissions }) {
         ? "עריכת המווסתים של הפלוגות שלך"
         : "מי המווסתים היום ובאיזו שעה נכנסים",
     icon: UtensilsCrossed,
+  });
+
+  links.push({
+    to: "/directory",
+    label: "ספר קשר",
+    description: "מי אחראי על מה, קל\"פים לפי פלוגה — חיוג ווואטסאפ בלחיצה",
+    icon: BookUser,
+  });
+
+  links.push({
+    to: "/guide",
+    label: "מדריך ומה חדש",
+    description: "איך עושים כל דבר במערכת, לפי התפקיד שלך",
+    icon: LifeBuoy,
   });
 
   return links;

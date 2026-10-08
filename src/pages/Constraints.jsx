@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, ChevronRight, ChevronLeft, CalendarRange, Repeat, ClipboardCheck, Pencil, Phone } from "lucide-react";
+import { Loader2, Plus, ChevronRight, ChevronLeft, CalendarRange, Repeat, ClipboardCheck, Pencil, Phone, CalendarPlus } from "lucide-react";
+import EventChecklist from "@/components/constraints/EventChecklist";
+import { toggleItem } from "@/lib/eventChecklist";
+import { downloadICS, eventToIcsItem } from "@/lib/ics";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,8 +46,17 @@ function getDateOnly(dateStr) {
   return String(dateStr).split("T")[0];
 }
 
+function parseDateParam(str) {
+  if (!str || !/^\d{4}-\d{2}-\d{2}$/.test(str)) return null;
+  const [y, m, d] = str.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 export default function Constraints() {
-  const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
+  // Deep links: ?date=YYYY-MM-DD opens the week containing that day,
+  // ?event=<id> opens that event's "פרטי אירוע" once events have loaded.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [weekStart, setWeekStart] = useState(() => getWeekStart(parseDateParam(searchParams.get("date")) || new Date()));
   const [viewMode, setViewMode] = useState("week");
   const [constraints, setConstraints] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -139,6 +152,19 @@ export default function Constraints() {
     loadEvents();
   }, [loadEvents]);
 
+  useEffect(() => {
+    const eventId = searchParams.get("event");
+    if (!eventId || events.length === 0) return;
+    const target = events.find((e) => e.id === eventId);
+    if (target) {
+      setWeekStart(getWeekStart(parseDateParam(getDateOnly(target.event_date)) || new Date()));
+      setViewEvent(target);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("event");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, events]);
+
   const loadRoutines = useCallback(async () => {
     try {
       const data = await base44.entities.DailyRoutine.list("-routine_date", 500);
@@ -190,6 +216,28 @@ export default function Constraints() {
     // details) added while creating a brand-new event, which only get a
     // real event_id to point at once this create actually happens.
     return event;
+  };
+
+  // Ticking a checklist item from the "פרטי אירוע" view saves right away.
+  const handleChecklistToggle = async (itemId) => {
+    if (!viewEvent) return;
+    const next = toggleItem(viewEvent.checklist || [], itemId, user?.full_name || user?.email);
+    setViewEvent({ ...viewEvent, checklist: next });
+    await base44.entities.Event.update(viewEvent.id, { checklist: next });
+    await loadEvents();
+  };
+
+  // "ייצוא ליומן" — the visible days' events + recurring events as one .ics.
+  const exportVisibleToCalendar = () => {
+    const items = [];
+    days.forEach((d) => {
+      const ds = toDateStr(d);
+      events.filter((e) => getDateOnly(e.event_date) === ds).forEach((e) => items.push(eventToIcsItem(e)));
+      getRecurringForDate(d).forEach((re) =>
+        items.push({ uid: `recurring-${re.id}-${ds}`, title: re.title, date: ds, start: re.start_time, end: re.end_time, description: re.details || "" })
+      );
+    });
+    downloadICS(items, `לוז_${toDateStr(days[0])}`, "לוז הגדוד");
   };
 
   const handleEventDelete = async (id) => {
@@ -396,6 +444,9 @@ export default function Constraints() {
             <ChevronLeft className="w-4 h-4" />
           </Button>
           <Button variant="ghost" onClick={goToday} className="text-sm">היום</Button>
+          <Button variant="ghost" size="icon" onClick={exportVisibleToCalendar} title="ייצוא הימים המוצגים ליומן (Google / Outlook / iPhone)">
+            <CalendarPlus className="w-4 h-4" />
+          </Button>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
@@ -889,7 +940,20 @@ export default function Constraints() {
               </div>
             </div>
           )}
-          <DialogFooter>
+          {viewEvent && (viewEvent.checklist || []).length > 0 && (
+            <div className="border-t pt-3">
+              <EventChecklist items={viewEvent.checklist} onToggle={handleChecklistToggle} />
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:gap-2 flex-wrap">
+            <Button
+              variant="ghost"
+              className="gap-1.5 sm:ml-auto"
+              onClick={() => viewEvent && downloadICS([eventToIcsItem(viewEvent)], viewEvent.title)}
+              title="קובץ שנפתח ב-Google Calendar, Outlook או ביומן של האייפון"
+            >
+              <CalendarPlus className="w-4 h-4" /> הוסף ליומן
+            </Button>
             <Button variant="outline" onClick={() => setViewEvent(null)}>סגור</Button>
             <Button variant="secondary" onClick={() => viewEvent && openEventEdit(viewEvent)}>עריכה</Button>
             <Button variant="destructive" onClick={() => viewEvent && handleEventDelete(viewEvent.id)}>מחק אירוע</Button>

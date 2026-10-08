@@ -13,7 +13,40 @@ const STATUSES = ["טרם הועלה", "בטיפול", "טופל"];
 const PRIORITIES = ["נמוך", "בינוני", "גבוה", "קריטי"];
 const HOUSING_LOCATIONS = ["מגורים כללי", "מגורי בנים", "מגורי בנות", "כניסה למגורי בנים", "כניסה למגורי בנות"];
 
-export default function GapForm({ open, onClose, onSubmit, editing }) {
+// Words worth comparing (Hebrew has lots of short function words). Common
+// one-letter prefixes (\u05D4/\u05D5/\u05D1/\u05DC/\u05DE/\u05DB/\u05E9) are stripped so "\u05D4\u05D1\u05E8\u05D6" matches "\u05D1\u05E8\u05D6".
+const PREFIXES = "\u05D4\u05D5\u05D1\u05DC\u05DE\u05DB\u05E9";
+function keywords(text) {
+  return new Set(
+    String(text || "")
+      .replace(/[^\u0590-\u05FFa-zA-Z0-9\s]/g, " ")
+      .split(/\s+/)
+      .map((w) => (w.length >= 4 && PREFIXES.includes(w[0]) ? w.slice(1) : w))
+      .filter((w) => w.length >= 3)
+  );
+}
+
+// Open gaps that look like the one being reported: same location, or at
+// least two shared keywords in the description. Lets the reporter jump to
+// the existing gap (and comment on it) instead of filing a duplicate.
+export function findSimilarGaps(form, gaps = []) {
+  const words = keywords(form.gap);
+  if (!form.location && words.size === 0) return [];
+  return gaps
+    .filter((g) => g.status !== "טופל")
+    .map((g) => {
+      const shared = [...keywords(g.gap)].filter((w) => words.has(w)).length;
+      const sameLocation = form.location && g.location === form.location;
+      const score = (sameLocation ? 2 : 0) + shared;
+      return { g, score, sameLocation, shared };
+    })
+    .filter((x) => x.shared >= 2 || (x.sameLocation && (x.shared >= 1 || words.size === 0)))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map((x) => x.g);
+}
+
+export default function GapForm({ open, onClose, onSubmit, editing, existingGaps = [], onOpenExisting }) {
   const [form, setForm] = useState({
     company: "",
     gap: "",
@@ -65,6 +98,7 @@ export default function GapForm({ open, onClose, onSubmit, editing }) {
   }, [editing, open]);
 
   const isHousing = HOUSING_LOCATIONS.includes(form.location);
+  const similar = editing ? [] : findSimilarGaps(form, existingGaps);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -112,6 +146,23 @@ export default function GapForm({ open, onClose, onSubmit, editing }) {
               rows={3}
             />
           </div>
+          {similar.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-1.5">
+              <p className="text-xs font-semibold text-amber-900">אולי כבר דיווחו על זה? פערים פתוחים דומים:</p>
+              {similar.map((g) => (
+                <div key={g.id} className="flex items-center gap-2 text-xs bg-white rounded-md px-2 py-1.5">
+                  <span className="flex-1 min-w-0 truncate">{g.gap}</span>
+                  <span className="text-muted-foreground shrink-0">{g.company} · {g.location} · {g.status}</span>
+                  {onOpenExisting && (
+                    <button type="button" onClick={() => onOpenExisting(g)} className="text-blue-600 hover:underline shrink-0">
+                      פתח
+                    </button>
+                  )}
+                </div>
+              ))}
+              <p className="text-[11px] text-amber-800">אם זה אותו פער — עדיף לפתוח אותו ולהוסיף תגובה. אם לא, אפשר להמשיך כרגיל.</p>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>מיקום</Label>

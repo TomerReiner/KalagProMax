@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,6 +102,11 @@ function PlayboxOrders({ user, canApprove }) {
   const [saving, setSaving] = useState(false);
   const [receivingOrder, setReceivingOrder] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  // Deep links: ?order=<id> scrolls to and briefly highlights that order
+  // (switching to the archive tab if that's where it lives), ?new=1 opens
+  // the "הזמנה חדשה" dialog.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [highlightId, setHighlightId] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -118,6 +124,28 @@ function PlayboxOrders({ user, canApprove }) {
     const unsubscribe = base44.entities.PlayboxOrder.subscribe(() => load());
     return unsubscribe;
   }, [load]);
+
+  useEffect(() => {
+    const orderId = searchParams.get("order");
+    const wantsNew = searchParams.get("new") === "1";
+    if (!orderId && !wantsNew) return;
+    if (wantsNew) {
+      setEditingOrder({ name: "", order_date: toDateStr(new Date()), notes: "", items: [{ ...EMPTY_ITEM }] });
+    } else {
+      if (loading) return;
+      const target = orders.find((o) => o.id === orderId);
+      if (target) {
+        setView(target.status === "התקבל" || target.status === "בוטל" ? "archive" : "active");
+        setHighlightId(orderId);
+        setTimeout(() => document.getElementById(`order-${orderId}`)?.scrollIntoView({ block: "center" }), 150);
+        setTimeout(() => setHighlightId(null), 2600);
+      }
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("order");
+    next.delete("new");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, orders, loading]);
 
   const openCreate = () => {
     setEditingOrder({ name: "", order_date: toDateStr(new Date()), notes: "", items: [{ ...EMPTY_ITEM }] });
@@ -293,6 +321,7 @@ function PlayboxOrders({ user, canApprove }) {
             <OrderCard
               key={o.id}
               order={o}
+              highlighted={highlightId === o.id}
               canApprove={canApprove}
               canDelete={canApprove || (o.created_by_id && o.created_by_id === user?.id)}
               busy={busyId === o.id}
@@ -344,11 +373,18 @@ function PlayboxOrders({ user, canApprove }) {
   );
 }
 
-function OrderCard({ order: o, canApprove, canDelete, busy, onEdit, onApprove, onStatus, onCopy, onExport, onDelete }) {
+function OrderCard({ order: o, highlighted, canApprove, canDelete, busy, onEdit, onApprove, onStatus, onCopy, onExport, onDelete }) {
   const items = orderItems(o);
   const editable = o.status === "ממתין";
   return (
-    <div className={cn("border-2 rounded-xl bg-white overflow-hidden", o.approved ? "border-emerald-200" : "border-border")}>
+    <div
+      id={`order-${o.id}`}
+      className={cn(
+        "border-2 rounded-xl bg-white overflow-hidden transition-shadow",
+        o.approved ? "border-emerald-200" : "border-border",
+        highlighted && "ring-4 ring-amber-300"
+      )}
+    >
       <div className="p-3 flex items-start justify-between gap-2 flex-wrap border-b bg-slate-50/60">
         <div className="min-w-0 space-y-1">
           <div className="flex items-center gap-2 flex-wrap">

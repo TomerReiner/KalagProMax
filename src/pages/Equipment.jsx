@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Package, Plus, History, Settings, Pencil, Trash2, Bell, BellRing, Download, PackageSearch, Search, X } from "lucide-react";
+import { Loader2, Package, Plus, History, Settings, Pencil, Trash2, Bell, BellRing, Download, PackageSearch, Search, X, ClipboardCheck } from "lucide-react";
+import InventoryCountDialog from "@/components/equipment/InventoryCountDialog";
 import * as XLSX from "xlsx";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -29,15 +31,22 @@ export default function Equipment() {
   const [myPermissions, setMyPermissions] = useState([]);
   const [permissionsLoading, setPermissionsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [activeWarehouse, setActiveWarehouse] = useState(WAREHOUSES[0]);
+  // Deep links: ?w=<warehouse> opens that warehouse tab, ?q=<text> prefills
+  // the cross-warehouse item search (used by the global search).
+  const [searchParams] = useSearchParams();
+  const [activeWarehouse, setActiveWarehouse] = useState(() => {
+    const w = searchParams.get("w");
+    return WAREHOUSES.includes(w) ? w : WAREHOUSES[0];
+  });
   // Cross-warehouse item search (feature request: "לעשות חיפוש על כל
   // המוצרים מכל המחסנים") — when non-empty, overrides the warehouse-tab
   // filter below with a search across every warehouse's items at once.
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => searchParams.get("q") || "");
   const [itemFormOpen, setItemFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [withdrawalOpen, setWithdrawalOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [countOpen, setCountOpen] = useState(false);
   const [holdings, setHoldings] = useState([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [returnTarget, setReturnTarget] = useState(null);
@@ -52,7 +61,7 @@ export default function Equipment() {
     const [settingsData, itemsData, holdingsData] = await Promise.all([
       base44.entities.EquipmentSettings.list(),
       base44.entities.WarehouseItem.list(),
-      base44.entities.EquipmentHolding.list("-created_date", 100),
+      base44.entities.EquipmentHolding.list("-created_date", 500),
     ]);
     setSettings(settingsData[0] || null);
     setItems(itemsData);
@@ -63,6 +72,13 @@ export default function Equipment() {
     base44.auth.me().then(setUser).catch(() => {});
     loadData().finally(() => setLoading(false));
   }, [loadData]);
+
+  // ?tab=holdings (from תמונת מצב's overdue alert) — jump to "ציוד בשימוש".
+  useEffect(() => {
+    if (loading || searchParams.get("tab") !== "holdings") return;
+    const t = setTimeout(() => document.getElementById("holdings")?.scrollIntoView({ block: "start" }), 200);
+    return () => clearTimeout(t);
+  }, [loading, searchParams]);
 
   // "אחראי משיכות ציוד" used to be its own profiles.equipment_manager flag;
   // it's now the equipment_manager delegated permission instead (see
@@ -323,6 +339,11 @@ export default function Equipment() {
               <History className="w-4 h-4" /> היסטוריה
             </Button>
           )}
+          {canEdit && (
+            <Button variant="outline" size="sm" onClick={() => setCountOpen(true)} className="gap-1" title={`ספירת מלאי ב${activeWarehouse}`}>
+              <ClipboardCheck className="w-4 h-4" /> ספירת מלאי
+            </Button>
+          )}
           {canEdit && user?.email && (
             <Button
               variant={isSubscribed ? "default" : "outline"}
@@ -544,6 +565,15 @@ export default function Equipment() {
       />
       {canEdit && (
         <WithdrawalHistory open={historyOpen} onClose={() => setHistoryOpen(false)} />
+      )}
+      {canEdit && (
+        <InventoryCountDialog
+          open={countOpen}
+          onClose={() => setCountOpen(false)}
+          warehouse={activeWarehouse}
+          items={items.filter((i) => i.warehouse === activeWarehouse)}
+          onApplied={loadData}
+        />
       )}
       {isAdmin && (
         <EquipmentSettingsDialog

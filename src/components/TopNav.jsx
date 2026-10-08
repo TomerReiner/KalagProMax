@@ -1,7 +1,7 @@
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { HardHat, CalendarRange, ClipboardList, ClipboardCheck, CheckSquare, BarChart3, UserRound, ChevronDown } from "lucide-react";
+import { HardHat, CalendarRange, ClipboardList, ClipboardCheck, CheckSquare, BarChart3, UserRound, ChevronDown, Radar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePreviewRole } from "@/lib/previewRoleContext";
 import { useOpenTasksToday } from "@/lib/useOpenTasksToday";
@@ -21,11 +21,14 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 // "/shotaf" is gone as a nav item entirely — its page merged into
 // "/daily-summary" as a second tab (see src/pages/DailySummary.jsx).
 const ALL_NAV_ITEMS = [
+  // "תמונת מצב" — battalion command picture (src/pages/Overview.jsx).
+  // `short` is shown on phones, where up to 7 tabs share the bar.
+  { to: "/overview", label: "תמונת מצב", short: "מצב", icon: Radar, roles: ["admin", "רסר", "סגל"] },
   { to: "/", label: "פערים", icon: HardHat, roles: ["admin", "קלפ", "רסר", "סגל"] },
   { to: "/daily-summary", label: "שוטף", icon: ClipboardList, roles: ["admin", "קלפ", "רסר", "סגל"] },
   { to: "/constraints", label: "אילוצים", icon: CalendarRange, roles: ["admin", "קלפ", "רסר", "סגל"] },
   { to: "/tasks", label: "משימות", icon: ClipboardCheck, roles: ["admin"] },
-  { to: "/statistics", label: "סטטיסטיקה", icon: BarChart3, roles: ["admin", "רסר", "סגל"] },
+  { to: "/statistics", label: "סטטיסטיקה", short: "נתונים", icon: BarChart3, roles: ["admin", "רסר", "סגל"] },
   // Every קלפ reaches /klaf by role — a delegated meal_regulators holder of
   // any OTHER role no longer gets this icon at all; they reach the same
   // route's narrower "מווסתים" view through the personal-area mini-menu
@@ -40,10 +43,10 @@ const ALL_NAV_ITEMS = [
 const PERSONAL_AREA_ITEM = { to: "/personal", label: "אזור אישי", icon: UserRound };
 
 const ROLE_ORDER = {
-  admin: ["/", "/daily-summary", "/constraints", "/tasks", "/statistics", "/klaf", "/personal"],
+  admin: ["/overview", "/", "/daily-summary", "/constraints", "/tasks", "/statistics", "/klaf", "/personal"],
   קלפ: ["/klaf", "/constraints", "/", "/daily-summary", "/personal"],
-  רסר: ["/", "/statistics", "/constraints", "/daily-summary", "/klaf", "/personal"],
-  סגל: ["/", "/statistics", "/constraints", "/daily-summary", "/klaf", "/personal"],
+  רסר: ["/overview", "/", "/statistics", "/constraints", "/daily-summary", "/klaf", "/personal"],
+  סגל: ["/overview", "/", "/statistics", "/constraints", "/daily-summary", "/klaf", "/personal"],
 };
 
 // Shared active/inactive pill styling for both the plain NavLinks and the
@@ -104,7 +107,7 @@ export default function TopNav() {
           shares the bar equally (flex-1) and shrinks to fit any phone width
           instead of spilling off-screen. */}
       <div className="max-w-6xl mx-auto flex items-stretch">
-        {items.map(({ to, label, icon: Icon }) => (
+        {items.map(({ to, label, short, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -114,7 +117,14 @@ export default function TopNav() {
             className={({ isActive }) => TAB_CLASS(isActive)}
           >
             <Icon className="w-[18px] h-[18px] sm:w-5 sm:h-5" />
-            <span className={NAV_LABEL_CLASS}>{label}</span>
+            <span className={NAV_LABEL_CLASS}>
+              {short ? (
+                <>
+                  <span className="sm:hidden">{short}</span>
+                  <span className="hidden sm:inline">{label}</span>
+                </>
+              ) : label}
+            </span>
             {to === "/klaf" && openCount > 0 && (
               <span
                 className="absolute top-1 left-1 min-w-[16px] h-[16px] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center"

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { MapPin, Building2, Clock, CalendarPlus, CalendarCheck, Pencil, FileText, Phone, User } from "lucide-react";
+import { MapPin, Clock, CalendarPlus, CalendarCheck, Pencil, FileText, Phone, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PLUGA_COLORS } from "@/lib/constants";
 import { base44 } from "@/api/base44Client";

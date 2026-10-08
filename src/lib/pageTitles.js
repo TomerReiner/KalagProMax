@@ -7,9 +7,10 @@
 // "/shotaf" is gone — src/pages/Shotaf.jsx's content moved into
 // "/daily-summary" as a second tab (see src/pages/DailySummary.jsx), so the
 // two pages that used to each have their own title now share one.
-import { HardHat, CalendarRange, ClipboardList, ClipboardCheck, CheckSquare, BarChart3, UserRound, Package, Truck, UtensilsCrossed } from "lucide-react";
+import { HardHat, CalendarRange, ClipboardList, ClipboardCheck, CheckSquare, BarChart3, UserRound, Package, Truck, UtensilsCrossed, Radar, BookUser, LifeBuoy, Printer } from "lucide-react";
 
 export const PAGE_TITLES = {
+  "/overview": { label: "תמונת מצב", icon: Radar },
   "/": { label: "פערים", icon: HardHat },
   "/daily-summary": { label: "שוטף", icon: ClipboardList },
   "/constraints": { label: "אילוצים", icon: CalendarRange },
@@ -20,4 +21,7 @@ export const PAGE_TITLES = {
   "/equipment": { label: "משיכות ציוד", icon: Package },
   "/playbox": { label: "פלייבוקס", icon: Truck },
   "/meal-regulators": { label: "מווסתים", icon: UtensilsCrossed },
+  "/directory": { label: "ספר קשר", icon: BookUser },
+  "/guide": { label: "מדריך ומה חדש", icon: LifeBuoy },
+  "/print/week": { label: "לוח שבועי להדפסה", icon: Printer },
 };

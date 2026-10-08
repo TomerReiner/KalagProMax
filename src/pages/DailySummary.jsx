@@ -253,7 +253,7 @@ export default function DailySummaryPage() {
         </TabsContent>
 
         <TabsContent value="shotaf" className="pt-4">
-          <ShotafPanel editable={canEditShotaf} initialDate={initialShotafDate} />
+          <ShotafPanel editable={canEditShotaf} initialDate={initialShotafDate} initialPlan={searchParams.get("plan") === "1"} />
         </TabsContent>
       </Tabs>
 

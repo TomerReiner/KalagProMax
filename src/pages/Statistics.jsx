@@ -5,9 +5,17 @@ import StatCard from "@/components/statistics/StatCard";
 import GapDashboard from "@/components/statistics/GapDashboard";
 import OperationsDashboard from "@/components/statistics/OperationsDashboard";
 import ActivityTimeline from "@/components/statistics/ActivityTimeline";
+import PlugaLeaderboard from "@/components/statistics/PlugaLeaderboard";
+import { usePreviewRole } from "@/lib/previewRoleContext";
 
 export default function Statistics() {
   const [data, setData] = useState(null);
+  const [user, setUser] = useState(null);
+  const { previewRole } = usePreviewRole();
+
+  useEffect(() => {
+    base44.auth.me().then(setUser).catch(() => {});
+  }, []);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -71,6 +79,10 @@ export default function Statistics() {
           <StatCard label="אירועים" value={events.length} tone="purple" />
           <StatCard label="אילוצים" value={constraints.length} tone="blue" />
         </div>
+
+        {/* Completion % is only real for an admin (task_completions RLS:
+            own or admin) — and only when not previewing another role. */}
+        <PlugaLeaderboard isAdmin={user?.role === "admin" && (!previewRole || previewRole === "admin")} />
 
         <GapDashboard gaps={gaps} />
 

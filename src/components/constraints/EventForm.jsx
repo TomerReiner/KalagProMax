@@ -12,6 +12,7 @@ import { PLUGOT, PLUGA_COLORS, toDateStr } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { base44 } from "@/api/base44Client";
 import { DEFAULT_REMINDER_OFFSET_MINUTES } from "@/lib/eventConfirmations";
+import EventChecklist from "@/components/constraints/EventChecklist";
 
 const emptyForm = {
   event_type: "חיצוני",
@@ -26,6 +27,7 @@ const emptyForm = {
   food_details: "",
   food_pickup_needed: false,
   responsible_plugas: [],
+  checklist: [],
 };
 
 export default function EventForm({ open, onClose, onSubmit, editing }) {
@@ -52,6 +54,7 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
           ...emptyForm,
           ...editing,
           responsible_plugas: editing.responsible_plugas || [],
+          checklist: Array.isArray(editing.checklist) ? editing.checklist : [],
           reminder_offset_minutes: editing.reminder_offset_minutes ?? DEFAULT_REMINDER_OFFSET_MINUTES,
         });
       } else {
@@ -112,7 +115,12 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
         );
       }
 
-      const savedEvent = await onSubmit(form);
+      // `checklist` is a newer column (migration 0021). Don't send an empty
+      // one for an event that never had it, so saving events keeps working
+      // on a database where that migration hasn't run yet.
+      const payload = { ...form };
+      if (!payload.checklist?.length && !(editing && "checklist" in editing)) delete payload.checklist;
+      const savedEvent = await onSubmit(payload);
 
       // Brand-new event: the contacts added above only exist locally
       // (pendingContacts) until now, since they had no event_id to point at
@@ -415,6 +423,15 @@ export default function EventForm({ open, onClose, onSubmit, editing }) {
               </div>
             </div>
           )}
+
+          <div className="border-t pt-4">
+            <EventChecklist
+              mode="edit"
+              items={form.checklist || []}
+              onChange={(checklist) => setForm((f) => ({ ...f, checklist }))}
+              defaultPluga={form.event_type === "פנימי" ? form.responsible_plugas?.[0] : null}
+            />
+          </div>
 
           <div className="border-t pt-4 space-y-4">
             <div className="flex items-center gap-2">

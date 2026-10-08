@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Plus, Loader2, HardHat, Download, LayoutGrid, List } from "lucide-react";
@@ -41,6 +42,11 @@ export default function Home() {
   const [layoutMode, setLayoutMode] = useState("board");
   const [detailGap, setDetailGap] = useState(null);
   const [user, setUser] = useState(null);
+  // Deep links (global search, תמונת מצב, ...): ?gap=<id> opens that gap's
+  // detail dialog once gaps have loaded, ?new=1 opens the "add gap" form.
+  // Both are consumed once and stripped from the URL so a refresh or a
+  // back-navigation doesn't reopen them.
+  const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
@@ -62,6 +68,24 @@ export default function Home() {
     });
     return unsubscribe;
   }, [loadGaps]);
+
+  useEffect(() => {
+    const gapId = searchParams.get("gap");
+    const wantsNew = searchParams.get("new") === "1";
+    if (!gapId && !wantsNew) return;
+    if (wantsNew) {
+      setEditing(null);
+      setFormOpen(true);
+    } else {
+      if (loading) return;
+      const target = gaps.find((g) => g.id === gapId);
+      if (target) setDetailGap(target);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("gap");
+    next.delete("new");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, gaps, loading]);
 
   const companies = PLUGOT;
 
@@ -376,6 +400,11 @@ export default function Home() {
         onClose={() => setFormOpen(false)}
         onSubmit={handleSubmit}
         editing={editing}
+        existingGaps={gaps}
+        onOpenExisting={(gap) => {
+          setFormOpen(false);
+          setDetailGap(gap);
+        }}
       />
 
       <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>

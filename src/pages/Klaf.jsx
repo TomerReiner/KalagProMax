@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Loader2, ChevronRight, ChevronLeft, CheckCircle2, Circle, ExternalLink, Sun, Sunset, Moon, Users, Truck, UtensilsCrossed, Plus, ClipboardList, BellRing } from "lucide-react";
-import { PLUGA_COLORS, PLUGOT, formatHebrewDate, toDateStr } from "@/lib/constants";
+import { PLUGA_COLORS, PLUGOT, formatHebrewDate, toDateStr, getShotafTime } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import DirectTaskForm from "@/components/klaf/DirectTaskForm";
 import KlafSchedule from "@/components/klaf/KlafSchedule";
@@ -15,6 +15,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { plugotFor, effectivePermissions } from "@/lib/permissions";
 import { getFoodPickupState, FOOD_PICKUP_STATE_LABELS } from "@/lib/eventConfirmations";
 import MealRegulatorsDaySummary from "@/components/mealregulators/MealRegulatorsDaySummary";
+import KlafPlugaEquipment from "@/components/klaf/KlafPlugaEquipment";
+import EventChecklist from "@/components/constraints/EventChecklist";
+import { toggleItem } from "@/lib/eventChecklist";
 import { MEAL_TASK_KIND } from "@/lib/mealRegulators";
 
 const WEEKDAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
@@ -361,6 +364,14 @@ export default function Klaf() {
   const allCompletedCount = weekTasksByDay.reduce((sum, day) => sum + day.completedCount, 0);
   const daysWithTasks = weekTasksByDay.filter((day) => day.total > 0);
 
+  // This pluga's items on an event's logistics checklist, ticked off right
+  // from the task list (see src/components/constraints/EventChecklist.jsx).
+  const toggleEventChecklistItem = async (event, itemId) => {
+    const next = toggleItem(event.checklist || [], itemId, user?.full_name || user?.email);
+    await base44.entities.Event.update(event.id, { checklist: next });
+    await loadWeekData();
+  };
+
   const toggleCompletion = async (task, taskDateStr) => {
     const key = `${taskDateStr}_${task.id}_${task.field}`;
     setToggling(key);
@@ -451,14 +462,34 @@ export default function Klaf() {
         </div>
       )}
 
-      {!weekLoading && allVisibleCount - allCompletedCount > 0 && (
-        <div className="rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-2.5 flex items-center gap-2 text-amber-800">
-          <BellRing className="w-4 h-4 shrink-0" />
-          <p className="text-sm font-medium">
-            יש לך {allVisibleCount - allCompletedCount} משימות פתוחות עד סוף השבוע
-          </p>
-        </div>
-      )}
+      {!weekLoading && allVisibleCount - allCompletedCount > 0 && (() => {
+        // "הבא בתור" — the next open task that has a time (שוטף duties use
+        // their fixed SHOTAF_TIMES), skipping anything earlier today.
+        const nowHHMM = `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`;
+        let next = null;
+        for (const day of weekTasksByDay) {
+          for (const t of day.tasks) {
+            if (isCompleted(t, day.dateStr)) continue;
+            const time = getTaskTime(t) || (t.type === "shotaf" ? getShotafTime(t.field, day.date)?.start : null);
+            if (!time || (day.dateStr === todayStr && time < nowHHMM)) continue;
+            if (!next || `${day.dateStr}${time}` < `${next.dateStr}${next.time}`) next = { task: t, time, dateStr: day.dateStr, label: day.label };
+          }
+          if (next) break;
+        }
+        return (
+          <div className="rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-2.5 flex items-center gap-2 text-amber-800 flex-wrap">
+            <BellRing className="w-4 h-4 shrink-0" />
+            <p className="text-sm font-medium">
+              יש לך {allVisibleCount - allCompletedCount} משימות פתוחות עד סוף השבוע
+            </p>
+            {next && (
+              <p className="text-sm sm:mr-auto">
+                <span className="text-amber-700">הבא בתור:</span> <span className="font-semibold">{next.task.label}</span> · {next.label} {next.time}
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="flex flex-col lg:flex-row gap-4">
         {/* Task List - right side in RTL. Independent of the schedule's date
@@ -531,6 +562,16 @@ export default function Klaf() {
                           <p className="text-xs text-muted-foreground mt-0.5">
                             {task.event.start_time} - {task.event.end_time}
                           </p>
+                        )}
+                        {task.event && (task.event.checklist || []).some((i) => i.pluga === pluga) && (
+                          <div className="mt-2 bg-white/70 rounded-lg p-2">
+                            <EventChecklist
+                              compact
+                              items={task.event.checklist}
+                              pluga={pluga}
+                              onToggle={(itemId) => toggleEventChecklistItem(task.event, itemId)}
+                            />
+                          </div>
                         )}
                         {task.directTask?.start_time && (
                           <p className="text-xs text-muted-foreground mt-0.5">
@@ -616,6 +657,8 @@ export default function Klaf() {
       {/* Read-only: every pluga whose regulators were filled in for the
           selected day — renders nothing at all if none were. Editing lives
           on /meal-regulators (reached from a "מילוי מווסתים" task). */}
+      <KlafPlugaEquipment pluga={pluga} />
+
       <MealRegulatorsDaySummary dateStr={dateStr} title="מווסתים להיום" className="mt-2" />
 
       <DirectTaskForm

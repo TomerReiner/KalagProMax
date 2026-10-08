@@ -3,7 +3,6 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Loader2, X, Paperclip, Film } from "lucide-react";
 import { Image } from "@/components/ui/image";
-import { cn } from "@/lib/utils";
 
 const MAX_VIDEO_MB = 25;
 

@@ -271,6 +271,14 @@ async function updateMe(data) {
     if (error) throw error;
     return;
   }
+  // A user's own phone number (ספר קשר) — profiles is admin-update-only
+  // under RLS, so this goes through a security-definer RPC that can only
+  // touch the caller's own phone (supabase/migrations/0021_*.sql).
+  if (keys.length === 1 && keys[0] === 'phone') {
+    const { error } = await supabase.rpc('set_my_phone', { p_phone: data.phone || '' });
+    if (error) throw error;
+    return;
+  }
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
   const { error } = await supabase.from('profiles').update(data).eq('id', user.id);

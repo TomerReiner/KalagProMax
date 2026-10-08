@@ -4,9 +4,13 @@ import { base44 } from "@/api/base44Client";
 import TopNav from "./TopNav";
 import AdminPanel from "./AdminPanel";
 import NotificationsBell from "./NotificationsBell";
+import CommandPalette, { useCommandPaletteHotkey } from "./CommandPalette";
+import WhatsNewBanner from "./WhatsNewBanner";
+import { Search } from "lucide-react";
 import PushAutoSubscribe from "./PushAutoSubscribe";
 import { usePreviewRole } from "@/lib/previewRoleContext";
 import { PAGE_TITLES } from "@/lib/pageTitles";
+import { ROLE_PAGES, ROLE_DEFAULT_PAGE } from "@/lib/rolePages";
 import { PageTitleProvider, usePageTitleValue } from "@/lib/pageTitleContext";
 
 const LOGO_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/98fcd8299_image.png";
@@ -14,37 +18,8 @@ const CHARACTER_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a15
 const WATERMARK_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/97bf84ed7_image.png";
 const HEADER_IMAGE_URL = "https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/a3148ebb9_image.png";
 
-// Role-based page allowlist.
-// "/meal-regulators" (src/pages/MealRegulators.jsx) is open to every role:
-// everyone can see the day's filled-in regulators, and what each person can
-// EDIT there is decided on the page itself (src/lib/mealRegulators.js).
-// "/daily-summary" (tab label "שוטף" — see src/pages/DailySummary.jsx)
-// is reachable by every role: the שוטף half is still edit-gated by the
-// shotaf_schedule permission, but anyone can view it and everyone can edit
-// the סיכום מסדר half, so there's no reason to hide the tab itself. "/shotaf"
-// itself is gone — it used to be its own admin-only page/route (see
-// src/pages/Shotaf.jsx, now unrouted) before the two were merged into one
-// tabbed page.
-// "/personal" (אזור אישי) is reachable by every role — it's the new home for
-// the equipment/playbox/מווסתים links that used to be their own top-nav
-// items (see TopNav.jsx / src/pages/PersonalArea.jsx), plus push-notification
-// opt-in for everyone. "/equipment" stays in this allowlist for the roles
-// that could already reach it, since PersonalArea links straight into it.
-// "/playbox" is open to every role: anyone can create/edit an order, and
-// only approval/status changes are gated (see src/pages/Playbox.jsx).
-const ROLE_PAGES = {
-  admin: ["/", "/daily-summary", "/constraints", "/tasks", "/statistics", "/equipment", "/playbox", "/meal-regulators", "/personal"],
-  קלפ: ["/", "/daily-summary", "/constraints", "/klaf", "/equipment", "/playbox", "/meal-regulators", "/personal"],
-  רסר: ["/", "/daily-summary", "/constraints", "/statistics", "/playbox", "/meal-regulators", "/personal"],
-  סגל: ["/", "/daily-summary", "/constraints", "/statistics", "/playbox", "/meal-regulators", "/personal"],
-};
-
-const ROLE_DEFAULT_PAGE = {
-  admin: "/",
-  קלפ: "/klaf",
-  רסר: "/",
-  סגל: "/",
-};
+// Role-based page allowlist + per-role landing page live in
+// src/lib/rolePages.js (shared with the global search).
 
 // Wraps everything in PageTitleProvider so a page rendered inside <Outlet/>
 // (see src/lib/pageTitleContext.jsx — today, just src/pages/Klaf.jsx) can
@@ -65,12 +40,21 @@ function AppLayoutInner() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const { previewRole } = usePreviewRole();
+  // Global search (src/components/CommandPalette.jsx) — Ctrl/⌘+K, "/", or
+  // the search button in the header.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useCommandPaletteHotkey(setPaletteOpen);
   // Fires the "land on my role's real default tab" redirect (see the effect
   // below) exactly once per mount, i.e. once per full page load/login — not
   // on every later navigation back to "/", which is still a legitimate nav
   // target the person can click back to on purpose (see ROLE_ORDER in
   // TopNav.jsx, which still lists "/" for every role).
   const didInitialDefaultRedirect = useRef(false);
+  // Whether the app was opened on a deep link ("/?gap=…", "/?new=1"). Read
+  // once at mount: the target page strips its query params as soon as it
+  // consumes them — before the user has even loaded — so checking the live
+  // location later would wrongly treat it as a bare "/".
+  const landedOnDeepLink = useRef(!!location.search);
 
   useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
@@ -90,7 +74,9 @@ function AppLayoutInner() {
     if (!didInitialDefaultRedirect.current) {
       didInitialDefaultRedirect.current = true;
       const roleDefault = ROLE_DEFAULT_PAGE[effectiveRole];
-      if (location.pathname === "/" && roleDefault && roleDefault !== "/" && allowed.includes(roleDefault)) {
+      // Only for a bare "/" — a deep link like "/?gap=<id>" or "/?new=1"
+      // (shared link, push notification, bookmark) must land where it points.
+      if (location.pathname === "/" && !landedOnDeepLink.current && roleDefault && roleDefault !== "/" && allowed.includes(roleDefault)) {
         navigate(roleDefault, { replace: true });
         return;
       }
@@ -121,11 +107,11 @@ function AppLayoutInner() {
     <div dir="rtl" className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100/50 relative overflow-x-hidden">
       <PushAutoSubscribe user={user} />
       <div
-        className="fixed inset-0 pointer-events-none opacity-[0.05] bg-contain bg-center bg-no-repeat"
+        className="fixed inset-0 pointer-events-none opacity-[0.05] bg-contain bg-center bg-no-repeat print:hidden"
         style={{ backgroundImage: `url(${WATERMARK_URL})` }} />
 
       <div className="relative z-10">
-        <div className="sticky top-0 z-20 shadow-sm bg-black">
+        <div className="sticky top-0 z-20 shadow-sm bg-black print:hidden">
           <header className="bg-black text-white border-b border-slate-800">
             <div className="max-w-6xl mx-auto px-2 sm:px-4 py-2 flex items-center justify-between gap-1 sm:gap-3">
               <img src={LOGO_URL} alt="סמל" className="w-9 h-9 rounded-full object-cover shrink-0" />
@@ -141,6 +127,15 @@ function AppLayoutInner() {
                 <img src={HEADER_IMAGE_URL} alt="Binder Done That" className="max-h-10 sm:max-h-12 max-w-full w-auto object-contain" />
               </div>
               <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setPaletteOpen(true)}
+                  className="p-2 rounded-lg hover:bg-slate-800 transition-colors"
+                  title="חיפוש בכל המערכת (Ctrl+K)"
+                  aria-label="חיפוש"
+                >
+                  <Search className="w-5 h-5 text-white" />
+                </button>
                 <NotificationsBell />
                 <img src="https://media.base44.com/images/public/6aa1c4c872f2848a151a92bf/dc1eb7964_image.png" alt="" className="hidden sm:block h-10 w-10 object-contain shrink-0" />
                 <AdminPanel />
@@ -150,15 +145,19 @@ function AppLayoutInner() {
           <TopNav />
         </div>
         {pageInfo && (
-          <div className="bg-white border-b border-border px-4 py-2.5">
+          <div className="bg-white border-b border-border px-4 py-2.5 print:hidden">
             <div className="max-w-6xl mx-auto flex items-center gap-2">
               {PageIcon && <PageIcon className="w-4 h-4 text-slate-500 shrink-0" />}
               <h1 className="text-base font-bold text-slate-900">{pageInfo.label}</h1>
             </div>
           </div>
         )}
+        {user && <div className="print:hidden"><WhatsNewBanner /></div>}
         <Outlet />
       </div>
+      {user && (
+        <CommandPalette open={paletteOpen} setOpen={setPaletteOpen} effectiveRole={previewRole || user.role} />
+      )}
     </div>);
 
 }

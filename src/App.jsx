@@ -24,6 +24,10 @@ import Equipment from '@/pages/Equipment';
 import Playbox from '@/pages/Playbox';
 import PersonalArea from '@/pages/PersonalArea';
 import MealRegulators from '@/pages/MealRegulators';
+import Overview from '@/pages/Overview';
+import Directory from '@/pages/Directory';
+import Guide from '@/pages/Guide';
+import PrintWeek from '@/pages/PrintWeek';
 // Add page imports here
 // Note: the Base44 MCP OAuth-consent page (src/pages/OAuthConsent.jsx) was
 // dropped here — it authorized AI clients against Base44's own hosted MCP
@@ -79,6 +83,7 @@ const AuthenticatedApp = () => {
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Home />} />
+          <Route path="/overview" element={<Overview />} />
           <Route path="/shotaf" element={<Navigate to="/daily-summary?tab=shotaf" replace />} />
           <Route path="/constraints" element={<Constraints />} />
           <Route path="/daily-summary" element={<DailySummaryPage />} />
@@ -89,6 +94,9 @@ const AuthenticatedApp = () => {
           <Route path="/playbox" element={<Playbox />} />
           <Route path="/personal" element={<PersonalArea />} />
           <Route path="/meal-regulators" element={<MealRegulators />} />
+          <Route path="/directory" element={<Directory />} />
+          <Route path="/guide" element={<Guide />} />
+          <Route path="/print/week" element={<PrintWeek />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
