@@ -355,3 +355,4 @@ npm run typecheck
 - `DailySummary.jsx` ↔ `KlafSummary.jsx` הם קוד כפול — לסנכרן ידנית.
 - התראות אימייל (בקשות גישה / משיכות) לא ממומשות — TODO ב-`api/submit-access-request.js` ו-`api/process-withdrawal.js`.
 - Vercel Hobby מגביל מספר cron jobs — ב-`vercel.json` יש שניים.
+
